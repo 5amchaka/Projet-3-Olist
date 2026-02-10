@@ -64,6 +64,7 @@ docs/               # Documentation du schema
 | [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) | Choix de modelisation : pourquoi et comment les 9 CSV deviennent 6 tables |
 | [docs/exploration_analysis.md](docs/exploration_analysis.md) | Analyse empirique des donnees brutes : chiffres cles, constats, justifications |
 | [notebooks/exploration_csv.ipynb](notebooks/exploration_csv.ipynb) | Notebook d'exploration : profils, cardinalites, visualisations par dataset |
+| [notebooks/comparaison_csv_bdd.ipynb](notebooks/comparaison_csv_bdd.ipynb) | Tracabilite CSV → BDD : volumetrie, distributions avant/apres, perdu/gagne |
 
 ## Star Schema
 

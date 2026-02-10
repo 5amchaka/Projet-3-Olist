@@ -1,10 +1,12 @@
 """Chargement : construire les tables de dimension/faits et charger dans SQLite."""
 
+import functools
 import logging
 
 import pandas as pd
 
 from src.config import PROJECT_ROOT
+from src.etl.utils import safe_mode
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +21,7 @@ def _add_surrogate_key(df: pd.DataFrame, key_name: str) -> pd.DataFrame:
     return df.reset_index()
 
 
-def _safe_mode(x):
-    """Retourner le mode d'une série, ou 'not_defined' si vide."""
-    m = x.mode()
-    return m.iloc[0] if len(m) > 0 else "not_defined"
+_safe_mode_not_defined = functools.partial(safe_mode, default="not_defined")
 
 
 # ── Constructeurs de dimensions ──────────────────────────────────────────
@@ -128,7 +127,7 @@ def build_fact_orders(
     # ── Agrégation des paiements par commande : valeur totale + type dominant (mode) ──
     pay_agg = payments.groupby("order_id").agg(
         order_payment_total=("payment_value", "sum"),
-        payment_type=("payment_type", _safe_mode),
+        payment_type=("payment_type", _safe_mode_not_defined),
     ).reset_index()
 
     # ── Avis : garder le plus récent par commande ────────────────────────
@@ -153,6 +152,12 @@ def build_fact_orders(
     fact["product_key"] = fact["product_id"].map(product_lookup)
     fact["customer_geo_key"] = fact["customer_id"].map(cust_by_id["geo_key"])
     fact["seller_geo_key"] = fact["seller_id"].map(seller_by_id["geo_key"])
+
+    # ── Validation des FK : signaler les valeurs NULL après mapping ──
+    for fk_col in ("customer_key", "seller_key", "product_key"):
+        n_null = fact[fk_col].isna().sum()
+        if n_null:
+            logger.warning("fact_orders: %d lignes avec %s NULL (FK non résolue)", n_null, fk_col)
 
     # ── Clé date à partir de l'horodatage d'achat ────────────────────────
     fact["date_key"] = (

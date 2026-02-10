@@ -9,11 +9,25 @@ from src.config import CSV_FILES, RAW_DIR
 logger = logging.getLogger(__name__)
 
 
+class ExtractionError(Exception):
+    """Erreur levée lors de l'extraction des données brutes."""
+
+
 def load_raw_csv(name: str) -> pd.DataFrame:
     """Charger un seul fichier CSV brut par nom de dataset."""
-    filename = CSV_FILES[name]
+    try:
+        filename = CSV_FILES[name]
+    except KeyError:
+        raise ExtractionError(
+            f"Dataset inconnu : '{name}'. "
+            f"Datasets disponibles : {sorted(CSV_FILES)}"
+        )
+
     path = RAW_DIR / filename
-    return pd.read_csv(path)
+    try:
+        return pd.read_csv(path)
+    except FileNotFoundError:
+        raise ExtractionError(f"Fichier introuvable : {path}")
 
 
 def load_all_raw() -> dict[str, pd.DataFrame]:

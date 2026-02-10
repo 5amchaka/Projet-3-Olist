@@ -4,6 +4,8 @@ import logging
 
 import pandas as pd
 
+from src.etl.utils import safe_mode
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,12 +36,6 @@ def strip_strings(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _safe_mode(x):
-    """Retourner le mode d'une série, ou 'unknown' si vide."""
-    m = x.mode()
-    return m.iloc[0] if len(m) > 0 else "unknown"
-
-
 def _normalize_geo_columns(df: pd.DataFrame, prefix: str) -> pd.DataFrame:
     """Normaliser ville (casse titre), état (majuscules), code postal (5 chiffres) pour un préfixe donné."""
     df[f"{prefix}_city"] = df[f"{prefix}_city"].str.title()
@@ -67,8 +63,8 @@ def clean_geolocation(df: pd.DataFrame) -> pd.DataFrame:
     agg = df.groupby("geolocation_zip_code_prefix").agg(
         geolocation_lat=("geolocation_lat", "median"),
         geolocation_lng=("geolocation_lng", "median"),
-        geolocation_city=("geolocation_city", _safe_mode),
-        geolocation_state=("geolocation_state", _safe_mode),
+        geolocation_city=("geolocation_city", safe_mode),
+        geolocation_state=("geolocation_state", safe_mode),
     ).reset_index()
 
     logger.info("    Geolocation deduplicated: %s -> %s rows",
@@ -95,7 +91,8 @@ def clean_orders(df: pd.DataFrame) -> pd.DataFrame:
     }
     invalid = ~df["order_status"].isin(valid_statuses)
     if invalid.any():
-        logger.warning("%d orders with invalid status", invalid.sum())
+        logger.warning("%d orders with invalid status dropped", invalid.sum())
+        df = df[~invalid]
     return df
 
 
@@ -116,7 +113,8 @@ def clean_order_payments(df: pd.DataFrame) -> pd.DataFrame:
     valid_types = {"credit_card", "boleto", "voucher", "debit_card", "not_defined"}
     invalid = ~df["payment_type"].isin(valid_types)
     if invalid.any():
-        logger.warning("%d payments with unknown type", invalid.sum())
+        logger.warning("%d payments with unknown type dropped", invalid.sum())
+        df = df[~invalid]
     df["payment_value"] = df["payment_value"].clip(lower=0)
     return df
 

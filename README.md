@@ -30,7 +30,7 @@ bash scripts/download_dataset.sh
 ### 4. Lancer le pipeline ETL
 
 ```bash
-.venv/bin/python -m src.etl.pipeline
+uv run python -m src.etl
 ```
 
 La base SQLite sera creee dans `data/database/olist_dw.db`.
@@ -38,19 +38,22 @@ La base SQLite sera creee dans `data/database/olist_dw.db`.
 ### 5. Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -v
+uv run python -m pytest tests/ -v
 ```
 
 ## Structure
 
 ```
 data/raw/           # CSV bruts depuis Kaggle
+data/processed/     # Donnees intermediaires
+data/staging/       # Staging
 data/database/      # Fichier SQLite (data warehouse)
 src/etl/            # Pipeline ETL (extract, transform, load)
 src/database/       # Connexion et modeles
 sql/                # DDL + requetes SQL
+scripts/            # Scripts utilitaires (download, etc.)
 notebooks/          # Exploration, nettoyage, chargement, verification
-tests/              # Tests unitaires
+tests/              # Tests unitaires et d'integration
 docs/               # Documentation du schema
 ```
 

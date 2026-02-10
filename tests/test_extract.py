@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from src.etl.extract import load_raw_csv, load_all_raw
+from src.etl.extract import ExtractionError, load_raw_csv, load_all_raw
 
 
 class TestLoadRawCsv:
@@ -23,16 +23,16 @@ class TestLoadRawCsv:
         assert len(df) == 2
         assert list(df.columns) == ["col_a", "col_b"]
 
-    def test_invalid_name_raises_key_error(self):
-        """Un nom de dataset inexistant lève KeyError."""
-        with pytest.raises(KeyError):
+    def test_invalid_name_raises_extraction_error(self):
+        """Un nom de dataset inexistant lève ExtractionError."""
+        with pytest.raises(ExtractionError, match="Dataset inconnu"):
             load_raw_csv("nom_inexistant")
 
-    def test_missing_file_raises_error(self, tmp_path):
-        """Un fichier CSV absent lève FileNotFoundError."""
+    def test_missing_file_raises_extraction_error(self, tmp_path):
+        """Un fichier CSV absent lève ExtractionError."""
         with patch("src.etl.extract.RAW_DIR", tmp_path), \
              patch("src.etl.extract.CSV_FILES", {"customers": "absent.csv"}):
-            with pytest.raises(FileNotFoundError):
+            with pytest.raises(ExtractionError, match="Fichier introuvable"):
                 load_raw_csv("customers")
 
 

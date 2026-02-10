@@ -1,10 +1,11 @@
-"""Modèles ORM documentant le schéma en étoile (pour référence uniquement).
+"""Modèles ORM documentant le schéma en étoile — REFERENCE ONLY.
 
-Les tables réelles sont créées via sql/create_star_schema.sql.
-Ces modèles servent de documentation côté Python du schéma.
+⚠ Les tables réelles sont créées via ``sql/create_star_schema.sql``.
+Ces classes ne sont PAS utilisées pour créer/modifier la base de données ;
+elles servent uniquement de documentation côté Python du schéma DDL.
 """
 
-from sqlalchemy import Column, Date, Float, Integer, String, Text
+from sqlalchemy import Column, Date, Float, Integer, String
 from sqlalchemy.orm import DeclarativeBase
 
 

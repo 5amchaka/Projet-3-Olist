@@ -1,7 +1,28 @@
 """Chargement : construire les tables de dimension/faits et charger dans SQLite."""
 
+import logging
+
 import pandas as pd
-import numpy as np
+
+from src.config import PROJECT_ROOT
+
+logger = logging.getLogger(__name__)
+
+
+# ── Utilitaires ──────────────────────────────────────────────────────────
+
+def _add_surrogate_key(df: pd.DataFrame, key_name: str) -> pd.DataFrame:
+    """Ajouter une clé surrogate 1-indexed nommée key_name au DataFrame."""
+    df = df.reset_index(drop=True)
+    df.index += 1
+    df.index.name = key_name
+    return df.reset_index()
+
+
+def _safe_mode(x):
+    """Retourner le mode d'une série, ou 'not_defined' si vide."""
+    m = x.mode()
+    return m.iloc[0] if len(m) > 0 else "not_defined"
 
 
 # ── Constructeurs de dimensions ──────────────────────────────────────────
@@ -15,10 +36,8 @@ def build_dim_dates(orders: pd.DataFrame) -> pd.DataFrame:
         "order_delivered_customer_date",
         "order_estimated_delivery_date",
     ]
-    all_dates = pd.Series(dtype="datetime64[ns]")
-    for col in ts_cols:
-        if col in orders.columns:
-            all_dates = pd.concat([all_dates, orders[col].dropna()])
+    date_series = [orders[col].dropna() for col in ts_cols if col in orders.columns]
+    all_dates = pd.concat(date_series) if date_series else pd.Series(dtype="datetime64[ns]")
 
     unique_dates = all_dates.dt.date.unique()
     unique_dates = pd.to_datetime(sorted(unique_dates))
@@ -46,10 +65,7 @@ def build_dim_geolocation(geo: pd.DataFrame) -> pd.DataFrame:
         "city": geo["geolocation_city"],
         "state": geo["geolocation_state"],
     })
-    dim = dim.reset_index(drop=True)
-    dim.index += 1
-    dim.index.name = "geo_key"
-    return dim.reset_index()
+    return _add_surrogate_key(dim, "geo_key")
 
 
 def build_dim_customers(
@@ -65,10 +81,7 @@ def build_dim_customers(
         "city": customers["customer_city"],
         "state": customers["customer_state"],
     })
-    dim = dim.reset_index(drop=True)
-    dim.index += 1
-    dim.index.name = "customer_key"
-    return dim.reset_index()
+    return _add_surrogate_key(dim, "customer_key")
 
 
 def build_dim_sellers(
@@ -83,10 +96,7 @@ def build_dim_sellers(
         "city": sellers["seller_city"],
         "state": sellers["seller_state"],
     })
-    dim = dim.reset_index(drop=True)
-    dim.index += 1
-    dim.index.name = "seller_key"
-    return dim.reset_index()
+    return _add_surrogate_key(dim, "seller_key")
 
 
 def build_dim_products(products: pd.DataFrame) -> pd.DataFrame:
@@ -101,10 +111,7 @@ def build_dim_products(products: pd.DataFrame) -> pd.DataFrame:
         "width_cm": products["product_width_cm"],
         "photos_qty": products["product_photos_qty"],
     })
-    dim = dim.reset_index(drop=True)
-    dim.index += 1
-    dim.index.name = "product_key"
-    return dim.reset_index()
+    return _add_surrogate_key(dim, "product_key")
 
 
 def build_fact_orders(
@@ -120,8 +127,8 @@ def build_fact_orders(
 
     # ── Agrégation des paiements par commande : valeur totale + type dominant (mode) ──
     pay_agg = payments.groupby("order_id").agg(
-        payment_value=("payment_value", "sum"),
-        payment_type=("payment_type", lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else "not_defined"),
+        order_payment_total=("payment_value", "sum"),
+        payment_type=("payment_type", _safe_mode),
     ).reset_index()
 
     # ── Avis : garder le plus récent par commande ────────────────────────
@@ -137,24 +144,20 @@ def build_fact_orders(
     fact = fact.merge(review_agg, on="order_id", how="left")
 
     # ── Recherche des clés de substitution ────────────────────────────────
-    cust_lookup = dim_customers.set_index("customer_id")["customer_key"]
-    seller_lookup = dim_sellers.set_index("seller_id")["seller_key"]
+    cust_by_id = dim_customers.set_index("customer_id")
+    seller_by_id = dim_sellers.set_index("seller_id")
     product_lookup = dim_products.set_index("product_id")["product_key"]
 
-    cust_geo_lookup = dim_customers.set_index("customer_id")["geo_key"]
-    seller_geo_lookup = dim_sellers.set_index("seller_id")["geo_key"]
-
-    fact["customer_key"] = fact["customer_id"].map(cust_lookup)
-    fact["seller_key"] = fact["seller_id"].map(seller_lookup)
+    fact["customer_key"] = fact["customer_id"].map(cust_by_id["customer_key"])
+    fact["seller_key"] = fact["seller_id"].map(seller_by_id["seller_key"])
     fact["product_key"] = fact["product_id"].map(product_lookup)
-    fact["customer_geo_key"] = fact["customer_id"].map(cust_geo_lookup)
-    fact["seller_geo_key"] = fact["seller_id"].map(seller_geo_lookup)
+    fact["customer_geo_key"] = fact["customer_id"].map(cust_by_id["geo_key"])
+    fact["seller_geo_key"] = fact["seller_id"].map(seller_by_id["geo_key"])
 
     # ── Clé date à partir de l'horodatage d'achat ────────────────────────
     fact["date_key"] = (
         fact["order_purchase_timestamp"]
         .dt.strftime("%Y%m%d")
-        .astype(float)
         .astype("Int64")
     )
 
@@ -175,7 +178,7 @@ def build_fact_orders(
         "customer_key", "seller_key", "product_key",
         "customer_geo_key", "seller_geo_key",
         "order_status", "price", "freight_value",
-        "payment_value", "payment_type", "review_score",
+        "order_payment_total", "payment_type", "review_score",
         "delivery_days", "estimated_days", "delivery_delta_days",
     ]].copy()
 
@@ -193,14 +196,9 @@ def load_to_sqlite(
     dim_products: pd.DataFrame,
     fact: pd.DataFrame,
 ):
-    """Charger toutes les tables de dimension et de faits dans SQLite."""
-    # Lire et exécuter le DDL
-    from src.config import PROJECT_ROOT
+    """Charger toutes les tables de dimension et de faits dans SQLite (transaction atomique)."""
     ddl_path = PROJECT_ROOT / "sql" / "create_star_schema.sql"
     ddl = ddl_path.read_text()
-
-    with engine.connect() as conn:
-        conn.connection.executescript(ddl)
 
     tables = [
         ("dim_dates", dim_dates),
@@ -211,8 +209,12 @@ def load_to_sqlite(
         ("fact_orders", fact),
     ]
 
-    for name, df in tables:
-        print(f"  Loading {name} ({len(df):,} rows)...")
-        df.to_sql(name, engine, if_exists="append", index=False, chunksize=5000)
+    with engine.connect() as conn:
+        # DDL + inserts dans une seule transaction
+        conn.connection.executescript(ddl)
+        for name, df in tables:
+            logger.info("Loading %s (%s rows)...", name, f"{len(df):,}")
+            df.to_sql(name, conn, if_exists="append", index=False, chunksize=5000)
+        conn.commit()
 
-    print("  All tables loaded successfully.")
+    logger.info("All tables loaded successfully.")

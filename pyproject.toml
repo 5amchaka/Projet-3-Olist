@@ -8,11 +8,17 @@ dependencies = [
     "sqlalchemy>=2.0",
     "kaggle>=1.6",
     "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+notebook = [
     "jupyter>=1.0",
     "matplotlib>=3.7",
     "seaborn>=0.12",
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
 ]
 
 [tool.pytest.ini_options]

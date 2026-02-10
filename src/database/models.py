@@ -87,7 +87,7 @@ class FactOrders(Base):
     order_status = Column(String(20))
     price = Column(Float)
     freight_value = Column(Float)
-    payment_value = Column(Float)
+    order_payment_total = Column(Float)
     payment_type = Column(String(20))
     review_score = Column(Integer)
     delivery_days = Column(Float)

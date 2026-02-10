@@ -1,8 +1,12 @@
 """Extraction : charger les fichiers CSV bruts dans des DataFrames."""
 
+import logging
+
 import pandas as pd
 
 from src.config import CSV_FILES, RAW_DIR
+
+logger = logging.getLogger(__name__)
 
 
 def load_raw_csv(name: str) -> pd.DataFrame:
@@ -16,7 +20,7 @@ def load_all_raw() -> dict[str, pd.DataFrame]:
     """Charger les 9 fichiers CSV bruts dans un dictionnaire de DataFrames."""
     dfs = {}
     for name in CSV_FILES:
-        print(f"  Loading {name}...")
+        logger.info("Loading %s...", name)
         dfs[name] = load_raw_csv(name)
-        print(f"    -> {dfs[name].shape[0]:,} rows, {dfs[name].shape[1]} cols")
+        logger.info("  -> %s rows, %s cols", f"{dfs[name].shape[0]:,}", dfs[name].shape[1])
     return dfs

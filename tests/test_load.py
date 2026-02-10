@@ -64,10 +64,10 @@ class TestBuildFactOrders:
         """Le grain est l'article : 3 items -> 3 lignes."""
         assert len(fact_deps) == 3
 
-    def test_payment_value_per_order(self, fact_deps):
-        """payment_value pour o1 = 250 + 50 = 300 (somme commande, pas item)."""
+    def test_order_payment_total_per_order(self, fact_deps):
+        """order_payment_total pour o1 = 250 + 50 = 300 (somme commande, dupliquée par item)."""
         o1_rows = fact_deps[fact_deps["order_id"] == "o1"]
-        assert (o1_rows["payment_value"] == 300.0).all()
+        assert (o1_rows["order_payment_total"] == 300.0).all()
 
     def test_review_keeps_latest(self, fact_deps):
         """o1 a 2 reviews (score 3 le 02-01, score 5 le 02-10) -> on garde 5."""

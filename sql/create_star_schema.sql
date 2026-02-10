@@ -81,7 +81,7 @@ CREATE TABLE fact_orders (
     order_status         TEXT,
     price                REAL,
     freight_value        REAL,
-    payment_value        REAL,
+    order_payment_total  REAL,
     payment_type         TEXT,
     review_score         INTEGER,
     delivery_days        REAL,

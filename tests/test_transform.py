@@ -78,14 +78,14 @@ class TestCleanOrders:
                  "invoiced", "processing", "created", "approved"}
         assert result["order_status"].isin(valid).all()
 
-    def test_invalid_status_warns_but_is_not_modified(self, sample_orders, capsys):
+    def test_invalid_status_warns_but_is_not_modified(self, sample_orders, caplog):
         df = sample_orders.copy()
         df.loc[1, "order_status"] = "unknown_status"
 
-        result = clean_orders(df)
-        captured = capsys.readouterr()
+        with caplog.at_level("WARNING", logger="src.etl.transform"):
+            result = clean_orders(df)
 
-        assert "WARNING: 1 orders with invalid status" in captured.out
+        assert "1 orders with invalid status" in caplog.text
         assert result.loc[1, "order_status"] == "unknown_status"
 
 
@@ -114,14 +114,14 @@ class TestCleanOrderPayments:
 
         assert result.loc[0, "payment_value"] == 0
 
-    def test_unknown_payment_type_warns(self, sample_order_payments, capsys):
+    def test_unknown_payment_type_warns(self, sample_order_payments, caplog):
         df = sample_order_payments.copy()
         df.loc[2, "payment_type"] = "crypto"
 
-        clean_order_payments(df)
-        captured = capsys.readouterr()
+        with caplog.at_level("WARNING", logger="src.etl.transform"):
+            clean_order_payments(df)
 
-        assert "WARNING: 1 payments with unknown type" in captured.out
+        assert "1 payments with unknown type" in caplog.text
 
 
 class TestCleanOrderReviews:

@@ -1930,31 +1930,38 @@ name = "olist-etl"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "jupyter" },
     { name = "kaggle", version = "1.7.4.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "kaggle", version = "1.8.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "matplotlib" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "python-dotenv" },
+    { name = "sqlalchemy" },
+]
+
+[package.optional-dependencies]
+dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "python-dotenv" },
+]
+notebook = [
+    { name = "jupyter" },
+    { name = "matplotlib" },
     { name = "seaborn" },
-    { name = "sqlalchemy" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "jupyter", specifier = ">=1.0" },
+    { name = "jupyter", marker = "extra == 'notebook'", specifier = ">=1.0" },
     { name = "kaggle", specifier = ">=1.6" },
-    { name = "matplotlib", specifier = ">=3.7" },
+    { name = "matplotlib", marker = "extra == 'notebook'", specifier = ">=3.7" },
     { name = "pandas", specifier = ">=2.0" },
-    { name = "pytest", specifier = ">=7.0" },
-    { name = "pytest-cov", specifier = ">=4.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "seaborn", specifier = ">=0.12" },
+    { name = "seaborn", marker = "extra == 'notebook'", specifier = ">=0.12" },
     { name = "sqlalchemy", specifier = ">=2.0" },
 ]
+provides-extras = ["dev", "notebook"]
 
 [[package]]
 name = "overrides"

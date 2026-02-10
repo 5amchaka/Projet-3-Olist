@@ -10,8 +10,6 @@ load_dotenv()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
-STAGING_DIR = DATA_DIR / "staging"
-PROCESSED_DIR = DATA_DIR / "processed"
 DATABASE_DIR = DATA_DIR / "database"
 
 DATABASE_PATH = DATABASE_DIR / "olist_dw.db"
@@ -29,6 +27,3 @@ CSV_FILES = {
     "sellers": "olist_sellers_dataset.csv",
     "category_translation": "product_category_name_translation.csv",
 }
-
-# ── Identifiant du dataset Kaggle ──────────────────────────────────────
-KAGGLE_DATASET = "olistbr/brazilian-ecommerce"

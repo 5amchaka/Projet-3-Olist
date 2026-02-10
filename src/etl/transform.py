@@ -1,6 +1,10 @@
 """Transformation : nettoyer et normaliser chaque dataset."""
 
+import logging
+
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 # ── Utilitaires partagés ─────────────────────────────────────────────────
@@ -11,7 +15,7 @@ def drop_full_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop_duplicates()
     n_dropped = n_before - len(df)
     if n_dropped:
-        print(f"    Dropped {n_dropped:,} duplicate rows")
+        logger.info("    Dropped %s duplicate rows", f"{n_dropped:,}")
     return df
 
 
@@ -30,32 +34,35 @@ def strip_strings(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _safe_mode(x):
+    """Retourner le mode d'une série, ou 'unknown' si vide."""
+    m = x.mode()
+    return m.iloc[0] if len(m) > 0 else "unknown"
+
+
+def _normalize_geo_columns(df: pd.DataFrame, prefix: str) -> pd.DataFrame:
+    """Normaliser ville (casse titre), état (majuscules), code postal (5 chiffres) pour un préfixe donné."""
+    df[f"{prefix}_city"] = df[f"{prefix}_city"].str.title()
+    df[f"{prefix}_state"] = df[f"{prefix}_state"].str.upper()
+    df[f"{prefix}_zip_code_prefix"] = (
+        df[f"{prefix}_zip_code_prefix"].astype(str).str.zfill(5)
+    )
+    return df
+
+
 # ── Nettoyage par dataset ───────────────────────────────────────────────
 
 def clean_customers(df: pd.DataFrame) -> pd.DataFrame:
     """Normaliser ville (casse titre), état (majuscules), compléter code postal avec zéros."""
     df = drop_full_duplicates(df)
     df = strip_strings(df)
-    df["customer_city"] = df["customer_city"].str.title()
-    df["customer_state"] = df["customer_state"].str.upper()
-    df["customer_zip_code_prefix"] = (
-        df["customer_zip_code_prefix"].astype(str).str.zfill(5)
-    )
-    return df
+    return _normalize_geo_columns(df, "customer")
 
 
 def clean_geolocation(df: pd.DataFrame) -> pd.DataFrame:
     """Dédupliquer par zip_code_prefix en utilisant les coordonnées médianes."""
     df = strip_strings(df)
-    df["geolocation_zip_code_prefix"] = (
-        df["geolocation_zip_code_prefix"].astype(str).str.zfill(5)
-    )
-    df["geolocation_city"] = df["geolocation_city"].str.title()
-    df["geolocation_state"] = df["geolocation_state"].str.upper()
-
-    def _safe_mode(x):
-        m = x.mode()
-        return m.iloc[0] if len(m) > 0 else "unknown"
+    df = _normalize_geo_columns(df, "geolocation")
 
     agg = df.groupby("geolocation_zip_code_prefix").agg(
         geolocation_lat=("geolocation_lat", "median"),
@@ -64,7 +71,8 @@ def clean_geolocation(df: pd.DataFrame) -> pd.DataFrame:
         geolocation_state=("geolocation_state", _safe_mode),
     ).reset_index()
 
-    print(f"    Geolocation deduplicated: {len(df):,} -> {len(agg):,} rows")
+    logger.info("    Geolocation deduplicated: %s -> %s rows",
+                f"{len(df):,}", f"{len(agg):,}")
     return agg
 
 
@@ -87,7 +95,7 @@ def clean_orders(df: pd.DataFrame) -> pd.DataFrame:
     }
     invalid = ~df["order_status"].isin(valid_statuses)
     if invalid.any():
-        print(f"    WARNING: {invalid.sum()} orders with invalid status")
+        logger.warning("%d orders with invalid status", invalid.sum())
     return df
 
 
@@ -108,7 +116,7 @@ def clean_order_payments(df: pd.DataFrame) -> pd.DataFrame:
     valid_types = {"credit_card", "boleto", "voucher", "debit_card", "not_defined"}
     invalid = ~df["payment_type"].isin(valid_types)
     if invalid.any():
-        print(f"    WARNING: {invalid.sum()} payments with unknown type")
+        logger.warning("%d payments with unknown type", invalid.sum())
     df["payment_value"] = df["payment_value"].clip(lower=0)
     return df
 
@@ -125,19 +133,16 @@ def clean_order_reviews(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean_products(df: pd.DataFrame, translation_df: pd.DataFrame) -> pd.DataFrame:
-    """Fusionner la traduction, remplir les valeurs numériques manquantes par la médiane, catégorie manquante par 'unknown'."""
+    """Fusionner la traduction anglaise, imputer les valeurs manquantes (médiane / 'unknown')."""
     df = drop_full_duplicates(df)
     df = strip_strings(df)
 
-    # Fusionner la traduction anglaise
     translation_df = strip_strings(translation_df)
     df = df.merge(translation_df, on="product_category_name", how="left")
 
-    # Remplir les catégories manquantes
     df["product_category_name"] = df["product_category_name"].fillna("unknown")
     df["product_category_name_english"] = df["product_category_name_english"].fillna("unknown")
 
-    # Remplir les colonnes numériques avec la médiane
     numeric_cols = [
         "product_name_lenght", "product_description_lenght",
         "product_photos_qty", "product_weight_g",
@@ -145,8 +150,7 @@ def clean_products(df: pd.DataFrame, translation_df: pd.DataFrame) -> pd.DataFra
     ]
     for col in numeric_cols:
         if col in df.columns:
-            median_val = df[col].median()
-            df[col] = df[col].fillna(median_val)
+            df[col] = df[col].fillna(df[col].median())
 
     return df
 
@@ -155,12 +159,7 @@ def clean_sellers(df: pd.DataFrame) -> pd.DataFrame:
     """Normaliser ville (casse titre), état (majuscules), compléter code postal avec zéros."""
     df = drop_full_duplicates(df)
     df = strip_strings(df)
-    df["seller_city"] = df["seller_city"].str.title()
-    df["seller_state"] = df["seller_state"].str.upper()
-    df["seller_zip_code_prefix"] = (
-        df["seller_zip_code_prefix"].astype(str).str.zfill(5)
-    )
-    return df
+    return _normalize_geo_columns(df, "seller")
 
 
 def clean_category_translation(df: pd.DataFrame) -> pd.DataFrame:
@@ -170,41 +169,32 @@ def clean_category_translation(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ── Orchestrateur ────────────────────────────────────────────────────────
+# ── Registry déclarative des cleaners ─────────────────────────────────────
+#
+# Chaque entrée : (nom_dataset, fonction_cleaner, liste de dépendances).
+# Les dépendances font référence à d'autres datasets déjà nettoyés, passés
+# comme arguments supplémentaires à la fonction de nettoyage.
+
+_CLEANERS: list[tuple[str, callable, list[str]]] = [
+    ("customers",            clean_customers,            []),
+    ("geolocation",          clean_geolocation,          []),
+    ("orders",               clean_orders,               []),
+    ("order_items",          clean_order_items,           []),
+    ("order_payments",       clean_order_payments,        []),
+    ("order_reviews",        clean_order_reviews,         []),
+    ("category_translation", clean_category_translation,  []),
+    ("sellers",              clean_sellers,               []),
+    ("products",             clean_products,              ["category_translation"]),
+]
+
 
 def clean_all(dfs: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
     """Exécuter toutes les fonctions de nettoyage et retourner les DataFrames nettoyés."""
-    cleaned = {}
+    cleaned: dict[str, pd.DataFrame] = {}
 
-    print("Cleaning customers...")
-    cleaned["customers"] = clean_customers(dfs["customers"].copy())
-
-    print("Cleaning geolocation...")
-    cleaned["geolocation"] = clean_geolocation(dfs["geolocation"].copy())
-
-    print("Cleaning orders...")
-    cleaned["orders"] = clean_orders(dfs["orders"].copy())
-
-    print("Cleaning order_items...")
-    cleaned["order_items"] = clean_order_items(dfs["order_items"].copy())
-
-    print("Cleaning order_payments...")
-    cleaned["order_payments"] = clean_order_payments(dfs["order_payments"].copy())
-
-    print("Cleaning order_reviews...")
-    cleaned["order_reviews"] = clean_order_reviews(dfs["order_reviews"].copy())
-
-    print("Cleaning category_translation...")
-    cleaned["category_translation"] = clean_category_translation(
-        dfs["category_translation"].copy()
-    )
-
-    print("Cleaning products (with translation merge)...")
-    cleaned["products"] = clean_products(
-        dfs["products"].copy(), cleaned["category_translation"]
-    )
-
-    print("Cleaning sellers...")
-    cleaned["sellers"] = clean_sellers(dfs["sellers"].copy())
+    for name, cleaner, deps in _CLEANERS:
+        logger.info("Cleaning %s...", name)
+        args = [dfs[name].copy()] + [cleaned[dep] for dep in deps]
+        cleaned[name] = cleaner(*args)
 
     return cleaned

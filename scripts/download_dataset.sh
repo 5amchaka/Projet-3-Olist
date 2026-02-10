@@ -78,8 +78,6 @@ validate_csv() {
     local filepath="$1"
     local filename
     filename="$(basename "$filepath")"
-    local header
-    header="$(head -1 "$filepath")"
     local lines
     lines="$(wc -l < "$filepath")"
     local md5
@@ -87,14 +85,13 @@ validate_csv() {
     echo "$filename | lines: $lines | md5: $md5"
     echo "$filename,$lines,$md5" >> "$RAW_DIR/manifest.txt"
 }
-export -f validate_csv
-export RAW_DIR
 
 # Effacer le manifeste
 echo "filename,lines,md5" > "$RAW_DIR/manifest.txt"
 
-printf '%s\n' "${EXPECTED_FILES[@]}" \
-    | xargs -I{} -P 4 bash -c 'validate_csv "$RAW_DIR/{}"'
+for f in "${EXPECTED_FILES[@]}"; do
+    validate_csv "$RAW_DIR/$f"
+done
 
 echo ""
 echo "[INFO] Manifest written to $RAW_DIR/manifest.txt"

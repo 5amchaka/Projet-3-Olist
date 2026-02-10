@@ -60,7 +60,7 @@ Le data warehouse utilise un schema en etoile :
 - **5 dimensions** : dates, geolocation, customers, sellers, products
 - **1 table de faits** : fact_orders (grain = article commande)
 
-Voir [docs/star_schema.md](docs/star_schema.md) pour le detail.
+Voir [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) pour le detail.
 
 ## Datasets
 

@@ -57,13 +57,21 @@ tests/              # Tests unitaires et d'integration
 docs/               # Documentation du schema
 ```
 
+## Documentation
+
+| Document | Contenu |
+|----------|---------|
+| [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) | Choix de modelisation : pourquoi et comment les 9 CSV deviennent 6 tables |
+| [docs/exploration_analysis.md](docs/exploration_analysis.md) | Analyse empirique des donnees brutes : chiffres cles, constats, justifications |
+| [notebooks/exploration_csv.ipynb](notebooks/exploration_csv.ipynb) | Notebook d'exploration : profils, cardinalites, visualisations par dataset |
+
 ## Star Schema
 
 Le data warehouse utilise un schema en etoile :
 - **5 dimensions** : dates, geolocation, customers, sellers, products
 - **1 table de faits** : fact_orders (grain = article commande)
 
-Voir [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) pour le detail.
+Voir [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) pour le detail et [docs/exploration_analysis.md](docs/exploration_analysis.md) pour les constats empiriques qui motivent ces choix.
 
 ## Datasets
 

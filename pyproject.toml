@@ -12,6 +12,12 @@ dependencies = [
     "matplotlib>=3.7",
     "seaborn>=0.12",
     "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests d'intégrité nécessitant la DB et les CSV bruts",
 ]
 
 [tool.hatch.build.targets.wheel]

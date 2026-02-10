@@ -53,11 +53,15 @@ def clean_geolocation(df: pd.DataFrame) -> pd.DataFrame:
     df["geolocation_city"] = df["geolocation_city"].str.title()
     df["geolocation_state"] = df["geolocation_state"].str.upper()
 
+    def _safe_mode(x):
+        m = x.mode()
+        return m.iloc[0] if len(m) > 0 else "unknown"
+
     agg = df.groupby("geolocation_zip_code_prefix").agg(
         geolocation_lat=("geolocation_lat", "median"),
         geolocation_lng=("geolocation_lng", "median"),
-        geolocation_city=("geolocation_city", lambda x: x.mode().iloc[0]),
-        geolocation_state=("geolocation_state", lambda x: x.mode().iloc[0]),
+        geolocation_city=("geolocation_city", _safe_mode),
+        geolocation_state=("geolocation_state", _safe_mode),
     ).reset_index()
 
     print(f"    Geolocation deduplicated: {len(df):,} -> {len(agg):,} rows")

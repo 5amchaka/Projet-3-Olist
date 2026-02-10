@@ -4,6 +4,8 @@ import pandas as pd
 import pytest
 
 from src.etl.transform import (
+    clean_all,
+    clean_category_translation,
     clean_customers,
     clean_geolocation,
     clean_orders,
@@ -178,3 +180,149 @@ class TestCleanSellers:
         assert result["seller_city"].tolist() == ["Sao Paulo", "Rio De Janeiro"]
         assert result["seller_state"].tolist() == ["SP", "RJ"]
         assert all(len(z) == 5 for z in result["seller_zip_code_prefix"])
+
+
+class TestCleanCategoryTranslation:
+    def test_strips_whitespace(self):
+        df = pd.DataFrame({
+            "product_category_name": ["  informatica  ", "beleza_saude"],
+            "product_category_name_english": ["computers  ", "  health_beauty"],
+        })
+        result = clean_category_translation(df)
+        assert result["product_category_name"].tolist() == ["informatica", "beleza_saude"]
+        assert result["product_category_name_english"].tolist() == ["computers", "health_beauty"]
+
+    def test_drops_duplicates(self):
+        df = pd.DataFrame({
+            "product_category_name": ["info", "info"],
+            "product_category_name_english": ["computers", "computers"],
+        })
+        result = clean_category_translation(df)
+        assert len(result) == 1
+
+
+class TestCleanAll:
+    def test_returns_all_9_datasets(
+        self,
+        sample_customers,
+        sample_geolocation,
+        sample_orders,
+        sample_order_items,
+        sample_order_payments,
+        sample_order_reviews,
+        sample_products,
+        sample_sellers,
+        sample_category_translation,
+    ):
+        dfs = {
+            "customers": sample_customers,
+            "geolocation": sample_geolocation,
+            "orders": sample_orders,
+            "order_items": sample_order_items,
+            "order_payments": sample_order_payments,
+            "order_reviews": sample_order_reviews,
+            "products": sample_products,
+            "sellers": sample_sellers,
+            "category_translation": sample_category_translation,
+        }
+        result = clean_all(dfs)
+
+        expected_keys = {
+            "customers", "geolocation", "orders", "order_items",
+            "order_payments", "order_reviews", "products", "sellers",
+            "category_translation",
+        }
+        assert set(result.keys()) == expected_keys
+
+    def test_products_has_english_translation(
+        self,
+        sample_customers,
+        sample_geolocation,
+        sample_orders,
+        sample_order_items,
+        sample_order_payments,
+        sample_order_reviews,
+        sample_products,
+        sample_sellers,
+        sample_category_translation,
+    ):
+        """category_translation nettoyée avant products → la colonne anglaise existe."""
+        dfs = {
+            "customers": sample_customers,
+            "geolocation": sample_geolocation,
+            "orders": sample_orders,
+            "order_items": sample_order_items,
+            "order_payments": sample_order_payments,
+            "order_reviews": sample_order_reviews,
+            "products": sample_products,
+            "sellers": sample_sellers,
+            "category_translation": sample_category_translation,
+        }
+        result = clean_all(dfs)
+        assert "product_category_name_english" in result["products"].columns
+
+
+class TestEdgeCases:
+    """Tests de cas limites : DataFrames vides, valeurs entièrement NaN."""
+
+    def test_clean_customers_empty(self):
+        df = pd.DataFrame(columns=[
+            "customer_id", "customer_unique_id",
+            "customer_zip_code_prefix", "customer_city", "customer_state",
+        ])
+        result = clean_customers(df)
+        assert len(result) == 0
+        assert list(result.columns) == list(df.columns)
+
+    def test_clean_geolocation_empty(self):
+        df = pd.DataFrame(columns=[
+            "geolocation_zip_code_prefix", "geolocation_lat",
+            "geolocation_lng", "geolocation_city", "geolocation_state",
+        ])
+        result = clean_geolocation(df)
+        assert len(result) == 0
+
+    def test_clean_geolocation_all_nan_city_state(self):
+        """Colonnes ville/état entièrement NaN : ne doit pas lever IndexError."""
+        df = pd.DataFrame({
+            "geolocation_zip_code_prefix": [1234, 1234],
+            "geolocation_lat": [-23.5, -23.6],
+            "geolocation_lng": [-46.6, -46.7],
+            "geolocation_city": [None, None],
+            "geolocation_state": [None, None],
+        })
+        result = clean_geolocation(df)
+        assert len(result) == 1
+        assert result["geolocation_city"].iloc[0] == "unknown"
+        assert result["geolocation_state"].iloc[0] == "unknown"
+
+    def test_clean_orders_empty(self):
+        df = pd.DataFrame(columns=[
+            "order_id", "customer_id", "order_status",
+            "order_purchase_timestamp", "order_approved_at",
+            "order_delivered_carrier_date", "order_delivered_customer_date",
+            "order_estimated_delivery_date",
+        ])
+        result = clean_orders(df)
+        assert len(result) == 0
+
+    def test_clean_sellers_empty(self):
+        df = pd.DataFrame(columns=[
+            "seller_id", "seller_zip_code_prefix",
+            "seller_city", "seller_state",
+        ])
+        result = clean_sellers(df)
+        assert len(result) == 0
+
+
+class TestErrorCases:
+    """Tests avec pytest.raises pour les cas d'erreur."""
+
+    def test_clean_products_without_translation_raises(self):
+        """clean_products sans translation_df lève TypeError."""
+        df = pd.DataFrame({
+            "product_id": ["p1"],
+            "product_category_name": ["info"],
+        })
+        with pytest.raises(TypeError):
+            clean_products(df)

@@ -3,6 +3,23 @@
 import pandas as pd
 import pytest
 
+from src.etl.load import (
+    build_dim_customers,
+    build_dim_dates,
+    build_dim_geolocation,
+    build_dim_products,
+    build_dim_sellers,
+    build_fact_orders,
+)
+from src.etl.transform import (
+    clean_customers,
+    clean_geolocation,
+    clean_order_items,
+    clean_orders,
+    clean_products,
+    clean_sellers,
+)
+
 
 @pytest.fixture
 def sample_customers():
@@ -38,6 +55,19 @@ def sample_orders():
         "order_delivered_customer_date": ["2018-01-20 10:00:00", None],
         "order_estimated_delivery_date": ["2018-01-25 00:00:00", "2018-03-10 00:00:00"],
     })
+
+
+@pytest.fixture
+def sample_orders_parsed(sample_orders):
+    """sample_orders avec les 5 colonnes timestamp converties en datetime."""
+    df = sample_orders.copy()
+    for col in [
+        "order_purchase_timestamp", "order_approved_at",
+        "order_delivered_carrier_date", "order_delivered_customer_date",
+        "order_estimated_delivery_date",
+    ]:
+        df[col] = pd.to_datetime(df[col])
+    return df
 
 
 @pytest.fixture
@@ -105,10 +135,54 @@ def sample_order_reviews():
         "review_score": [3, 5, 4],
         "review_comment_title": ["", "", ""],
         "review_comment_message": ["", "", ""],
-        "review_creation_date": pd.to_datetime([
-            "2018-02-01", "2018-02-10", "2018-03-05"
-        ]),
-        "review_answer_timestamp": pd.to_datetime([
-            "2018-02-02", "2018-02-11", "2018-03-06"
-        ]),
+        "review_creation_date": ["2018-02-01", "2018-02-10", "2018-03-05"],
+        "review_answer_timestamp": ["2018-02-02", "2018-02-11", "2018-03-06"],
     })
+
+
+@pytest.fixture
+def sample_dim_geo(sample_geolocation):
+    """Géolocalisation nettoyée + dimension construite."""
+    geo = clean_geolocation(sample_geolocation)
+    return build_dim_geolocation(geo)
+
+
+@pytest.fixture
+def fact_deps(
+    sample_order_items,
+    sample_orders,
+    sample_order_payments,
+    sample_order_reviews,
+    sample_customers,
+    sample_geolocation,
+    sample_sellers,
+    sample_products,
+    sample_category_translation,
+):
+    """Construire toute la chaîne transform+build et retourner la fact table."""
+    orders = clean_orders(sample_orders.copy())
+    items = clean_order_items(sample_order_items.copy())
+
+    geo = clean_geolocation(sample_geolocation)
+    dim_geo = build_dim_geolocation(geo)
+    dim_cust = build_dim_customers(clean_customers(sample_customers), dim_geo)
+    dim_sell = build_dim_sellers(clean_sellers(sample_sellers), dim_geo)
+    dim_prod = build_dim_products(
+        clean_products(sample_products, sample_category_translation)
+    )
+
+    # Les reviews doivent être en datetime pour le tri dans build_fact_orders
+    reviews = sample_order_reviews.copy()
+    reviews["review_creation_date"] = pd.to_datetime(reviews["review_creation_date"])
+    reviews["review_answer_timestamp"] = pd.to_datetime(reviews["review_answer_timestamp"])
+
+    fact = build_fact_orders(
+        order_items=items,
+        orders=orders,
+        payments=sample_order_payments,
+        reviews=reviews,
+        dim_customers=dim_cust,
+        dim_sellers=dim_sell,
+        dim_products=dim_prod,
+    )
+    return fact

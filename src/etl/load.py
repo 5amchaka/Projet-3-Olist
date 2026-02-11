@@ -214,12 +214,19 @@ def load_to_sqlite(
         ("fact_orders", fact),
     ]
 
+    views_path = PROJECT_ROOT / "sql" / "views.sql"
+    views_sql = views_path.read_text() if views_path.exists() else ""
+
     with engine.connect() as conn:
         # DDL + inserts dans une seule transaction
         conn.connection.executescript(ddl)
         for name, df in tables:
             logger.info("Loading %s (%s rows)...", name, f"{len(df):,}")
             df.to_sql(name, conn, if_exists="append", index=False, chunksize=5000)
+        # Vues réutilisables
+        if views_sql:
+            conn.connection.executescript(views_sql)
+            logger.info("SQL views created from views.sql.")
         conn.commit()
 
     logger.info("All tables loaded successfully.")

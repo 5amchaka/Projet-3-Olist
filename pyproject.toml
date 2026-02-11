@@ -20,6 +20,10 @@ notebook = [
     "matplotlib>=3.7",
     "seaborn>=0.12",
 ]
+dashboard = [
+    "nicegui>=2.0",
+    "plotly>=5.18",
+]
 
 [tool.pytest.ini_options]
 markers = [

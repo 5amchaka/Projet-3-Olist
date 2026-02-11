@@ -181,20 +181,20 @@ Le diagramme suivant illustre les transformations appliquees a chaque table sour
 ### 4.1 Geolocalisation (1 000 163 -> 19 015 lignes)
 
 1. **Deduplication :** le CSV contient en moyenne 53 entrees par code postal. La transformation ne conserve qu'une seule entree par zip_code_prefix.
-2. **Agregation des coordonnees :** les latitudes et longitudes multiples sont moyennees. Ecart moyen constate : 0.02 degre en latitude, 0.018 en longitude (precision d'environ 2 km).
+2. **Agregation des coordonnees :** les latitudes et longitudes multiples sont agregees par **mediane**. Ecart median constate : 0.02 degre en latitude, 0.018 en longitude (precision d'environ 2 km).
 3. **Normalisation des villes :** les noms de villes sont convertis en Title Case (ex: `sao paulo` -> `Sao Paulo`).
 4. **Typage :** zip_code_prefix passe de INTEGER a TEXT (pour conserver les zeros initiaux potentiels).
 
 ### 4.2 Produits (jointure traduction)
 
-1. **Jointure de traduction :** LEFT JOIN avec product_category_name_translation pour ajouter category_name_en. Les 610 produits sans categorie dans le CSV obtiennent une valeur NULL ou geree dans la DB (32 951 produits avec category_name_en renseignee).
+1. **Jointure de traduction :** LEFT JOIN avec product_category_name_translation pour ajouter category_name_en. Les 610 produits sans categorie dans le CSV sont remplaces par `unknown` (32 951 produits avec category_name_en renseignee).
 2. **Renommage des colonnes :** product_weight_g -> weight_g, product_length_cm -> length_cm, etc.
 3. **Suppression de colonnes :** product_name_lenght et product_description_lenght ne sont pas conservees dans la dimension (jugees non analytiques).
 
 ### 4.3 Clients et Vendeurs
 
 1. **Liaison geographique :** jointure sur zip_code_prefix pour obtenir le geo_key correspondant. 278 clients et 7 vendeurs n'ont pas de correspondance (codes postaux absents de dim_geolocation).
-2. **Normalisation des villes :** passage en Title Case. Les villes dans dim_customers proviennent de la geolocalisation, assurant la coherence avec dim_geolocation.
+2. **Normalisation des villes :** passage en Title Case. Les villes dans dim_customers proviennent de `customers` (normalisees), avec un `geo_key` resolu via `dim_geolocation`.
 3. **Cles de substitution :** remplacement des UUID textuels par des INTEGER AUTOINCREMENT pour les performances de jointure.
 
 ### 4.4 Dimension temporelle (generee)
@@ -211,7 +211,7 @@ Le diagramme suivant illustre les transformations appliquees a chaque table sour
 4. **Calcul des metriques de livraison :**
    - `delivery_days` = (delivered_customer_date - purchase_timestamp) en jours
    - `estimated_days` = (estimated_delivery_date - purchase_timestamp) en jours
-   - `delivery_delta_days` = estimated_days - delivery_days
+   - `delivery_delta_days` = delivery_days - estimated_days
 5. **Resolution des cles :** remplacement de tous les identifiants textuels par leurs surrogate keys via lookup dans les dimensions.
 
 ---
@@ -229,7 +229,7 @@ La comparaison systematique entre les donnees CSV sources et la base de donnees 
 | **Customers** | 99 441 | 99 441 | **100%** | Tous les IDs concordent. Villes normalisees (Title Case) |
 | **Products** | 32 951 | 32 951 | **100%** | IDs identiques. Traduction EN ajoutee via jointure |
 | **Sellers** | 3 095 | 3 095 | **100%** | IDs identiques. 7 geo_key NULL (zips absents de geolocation) |
-| **Geolocation** | 1 000 163 | 19 015 | N/A | Deduplication par zip. Lat/Lng = moyenne. Ecart moyen <0.02 degre |
+| **Geolocation** | 1 000 163 | 19 015 | N/A | Deduplication par zip. Lat/Lng = mediane. Ecart median <0.02 degre |
 | **Order Items / Fact** | 112 650 | 112 650 | **100%** | Nombre identique. Grain = article par commande |
 | **Prix (SUM)** | 13 591 643.70 R$ | 13 591 643.70 R$ | **100%** | Somme totale des prix strictement identique |
 | **Freight (SUM)** | 2 251 909.54 R$ | 2 251 909.54 R$ | **100%** | Somme totale du fret strictement identique |
@@ -239,7 +239,7 @@ La comparaison systematique entre les donnees CSV sources et la base de donnees 
 
 ### Verdict global
 
-La concordance est excellente : les volumes, sommes financieres et identifiants sont conserves a 100%. Le seul ecart mineur (0.1% sur les review scores) s'explique par le traitement des commandes ayant plusieurs reviews, ou seul le premier est retenu.
+La concordance est excellente : les volumes, sommes financieres et identifiants sont conserves a 100%. Le seul ecart mineur (0.1% sur les review scores) s'explique par le traitement des commandes ayant plusieurs reviews, ou seul le plus recent est retenu.
 
 ---
 
@@ -275,7 +275,7 @@ Ces commandes sont exclues de fact_orders car la table de faits est basee sur le
 
 ### 6.4 Precision de la geolocalisation
 
-La moyenne des coordonnees GPS par code postal introduit une imprecision d'environ 0.02 degre (environ 2 km). C'est acceptable pour des analyses au niveau ville/region mais insuffisant pour du geocodage precis.
+La mediane des coordonnees GPS par code postal introduit une imprecision d'environ 0.02 degre (environ 2 km). C'est acceptable pour des analyses au niveau ville/region mais insuffisant pour du geocodage precis.
 
 ### 6.5 Ecart sur les statuts de commandes
 

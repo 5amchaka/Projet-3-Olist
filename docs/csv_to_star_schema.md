@@ -127,12 +127,12 @@ C'est la transformation la plus importante. 4 CSV sont fusionnes en une seule ta
 **Probleme** : une commande peut avoir **plusieurs paiements** (ex: carte + voucher). On ne peut pas joindre directement au grain order_item sans multiplier les lignes.
 
 **Solution** : agreger les paiements **par commande** avant la jointure :
-- `payment_value` = somme de tous les paiements de la commande
+- `order_payment_total` = somme de tous les paiements de la commande
 - `payment_type` = type dominant (mode statistique — le type de paiement le plus frequent)
 
 Chaque article de la meme commande recoit donc les memes valeurs de paiement. C'est un compromis : on perd le detail par methode de paiement, mais on evite l'explosion des lignes.
 
-> **Attention** : `payment_value` est une mesure semi-additive. Elle est au grain commande, pas article. Pour obtenir le total correct, il faut d'abord dedupliquer par `order_id` (ex: `SELECT DISTINCT order_id, payment_value`) avant de sommer.
+> **Attention** : `order_payment_total` est une mesure semi-additive. Elle est au grain commande, pas article. Pour obtenir le total correct, il faut d'abord dedupliquer par `order_id` (ex: `SELECT DISTINCT order_id, order_payment_total`) avant de sommer.
 
 ### Fusion de `order_reviews`
 
@@ -165,7 +165,7 @@ Ces metriques sont pre-calculees dans la table de faits pour eviter de recalcule
 | `order_status` | Attribut | `orders.order_status` |
 | `price` | Metrique | `order_items.price` |
 | `freight_value` | Metrique | `order_items.freight_value` |
-| `payment_value` | Metrique (semi-additive) | Somme par `order_id` depuis `order_payments` |
+| `order_payment_total` | Metrique (semi-additive) | Somme par `order_id` depuis `order_payments` |
 | `payment_type` | Attribut | Mode statistique par `order_id` depuis `order_payments` |
 | `review_score` | Metrique | Review le plus recent par `order_id` depuis `order_reviews` |
 | `delivery_days` | Metrique derivee | Calculee depuis les timestamps |

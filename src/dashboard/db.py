@@ -1,6 +1,7 @@
 """Couche données — connexion SQLite read-only et helpers."""
 
 import sqlite3
+import threading
 from pathlib import Path
 
 import pandas as pd
@@ -10,6 +11,7 @@ from src.config import DATABASE_PATH
 _SQL_DIR = Path(__file__).resolve().parent.parent.parent / "sql" / "dashboard"
 _VIEWS_SQL = Path(__file__).resolve().parent.parent.parent / "sql" / "views.sql"
 _conn: sqlite3.Connection | None = None
+_conn_lock = threading.Lock()
 
 
 def _ensure_views() -> None:
@@ -38,14 +40,18 @@ def get_connection() -> sqlite3.Connection:
     """Retourne une connexion SQLite read-only singleton."""
     global _conn
     if _conn is None:
-        _ensure_views()
-        uri = f"file:{DATABASE_PATH}?mode=ro"
-        _conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
-        # Evite les erreurs "unable to open database file" sur les requêtes
-        # analytiques qui nécessitent des structures temporaires (DISTINCT,
-        # GROUP BY, ORDER BY, window functions) en mode read-only.
-        _conn.execute("PRAGMA temp_store=MEMORY")
-        _conn.row_factory = sqlite3.Row
+        with _conn_lock:
+            if _conn is None:
+                _ensure_views()
+                uri = f"file:{DATABASE_PATH}?mode=ro"
+                _conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+                # Evite les erreurs "unable to open database file" sur les requêtes
+                # analytiques qui nécessitent des structures temporaires (DISTINCT,
+                # GROUP BY, ORDER BY, window functions) en mode read-only.
+                _conn.execute("PRAGMA temp_store=MEMORY")
+                # Laisse SQLite attendre un verrou plutot que d'echouer immediatement.
+                _conn.execute("PRAGMA busy_timeout=5000")
+                _conn.row_factory = sqlite3.Row
     return _conn
 
 

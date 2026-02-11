@@ -36,7 +36,9 @@ def layout(current_path: str = "/") -> ui.left_drawer:
                 on_click=lambda: ui.navigate.to("/presentation"),
             ).props("flat color=white")
 
-    drawer = ui.left_drawer(bordered=True).classes("p-2").style(
+    # `value=True` evite la detection JS "auto" du drawer (value=None) qui peut
+    # timeout dans certains environnements headless/SSH.
+    drawer = ui.left_drawer(value=True, bordered=True).classes("p-2").style(
         f"background: {BG_DARK}; border-right: 1px solid #333"
     )
     with drawer:

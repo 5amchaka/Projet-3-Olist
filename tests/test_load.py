@@ -85,6 +85,59 @@ class TestBuildFactOrders:
         o1_row = fact_deps[fact_deps["order_id"] == "o1"].iloc[0]
         assert round(o1_row["delivery_days"]) == 5
 
+    def test_logs_unresolved_customer_fk(
+        self,
+        sample_order_items,
+        sample_orders,
+        sample_order_payments,
+        sample_order_reviews,
+        sample_customers,
+        sample_geolocation,
+        sample_sellers,
+        sample_products,
+        sample_category_translation,
+        caplog,
+    ):
+        """Si une FK client n'est pas résolue, build_fact_orders loggue un warning explicite."""
+        from src.etl.transform import (
+            clean_geolocation,
+            clean_order_items,
+            clean_orders,
+            clean_products,
+        )
+
+        orders = clean_orders(sample_orders.copy())
+        items = clean_order_items(sample_order_items.copy())
+        geo = clean_geolocation(sample_geolocation)
+
+        dim_geo = build_dim_geolocation(geo)
+        dim_cust = build_dim_customers(clean_customers(sample_customers), dim_geo)
+        dim_sell = build_dim_sellers(clean_sellers(sample_sellers), dim_geo)
+        dim_prod = build_dim_products(
+            clean_products(sample_products, sample_category_translation)
+        )
+
+        # Supprimer volontairement le client c1 : les 2 items de o1 perdent leur FK client.
+        dim_cust = dim_cust[dim_cust["customer_id"] != "c1"]
+
+        reviews = sample_order_reviews.copy()
+        reviews["review_creation_date"] = pd.to_datetime(reviews["review_creation_date"])
+        reviews["review_answer_timestamp"] = pd.to_datetime(reviews["review_answer_timestamp"])
+
+        with caplog.at_level("WARNING", logger="src.etl.load"):
+            fact = build_fact_orders(
+                order_items=items,
+                orders=orders,
+                payments=sample_order_payments,
+                reviews=reviews,
+                dim_customers=dim_cust,
+                dim_sellers=dim_sell,
+                dim_products=dim_prod,
+            )
+
+        assert "customer_key NULL" in caplog.text
+        assert fact["customer_key"].isna().sum() == 2
+
 
 class TestBuildDimSellers:
     def test_has_seller_key(self, sample_sellers, sample_dim_geo):
@@ -198,3 +251,51 @@ class TestLoadToSqlite:
         with engine.connect() as conn:
             count = conn.execute(text("SELECT COUNT(*) FROM fact_orders")).scalar()
         assert count == len(fact)
+
+    def test_atomic_rollback_on_load_error(self, tmp_path, full_star_schema):
+        """En cas d'erreur pendant le chargement, la DB doit rester dans son état précédent."""
+        db_path = tmp_path / "test.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        dim_dates, dim_geo, dim_cust, dim_sell, dim_prod, fact = full_star_schema
+
+        # Premier chargement valide = état de référence.
+        load_to_sqlite(engine, dim_dates, dim_geo, dim_cust, dim_sell, dim_prod, fact)
+
+        with engine.connect() as conn:
+            baseline_city = conn.execute(
+                text("SELECT city FROM dim_customers WHERE customer_id = 'c1'")
+            ).scalar()
+            baseline_fact_count = conn.execute(
+                text("SELECT COUNT(*) FROM fact_orders")
+            ).scalar()
+
+        # Deuxième chargement volontairement invalide (CHECK review_score 1..5).
+        dim_cust_changed = dim_cust.copy()
+        dim_cust_changed.loc[
+            dim_cust_changed["customer_id"] == "c1", "city"
+        ] = "ShouldNotPersist"
+
+        invalid_fact = fact.copy()
+        invalid_fact.loc[invalid_fact.index[0], "review_score"] = 6
+
+        with pytest.raises(Exception):
+            load_to_sqlite(
+                engine,
+                dim_dates,
+                dim_geo,
+                dim_cust_changed,
+                dim_sell,
+                dim_prod,
+                invalid_fact,
+            )
+
+        with engine.connect() as conn:
+            city_after_error = conn.execute(
+                text("SELECT city FROM dim_customers WHERE customer_id = 'c1'")
+            ).scalar()
+            fact_count_after_error = conn.execute(
+                text("SELECT COUNT(*) FROM fact_orders")
+            ).scalar()
+
+        assert city_after_error == baseline_city
+        assert fact_count_after_error == baseline_fact_count

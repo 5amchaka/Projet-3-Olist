@@ -35,6 +35,10 @@ def sql_viewer(
     ).props("dense"):
         ui.code(sql_text, language="sql").classes("w-full")
 
+    if df.empty:
+        ui.label("Aucune donnee retournee par cette requete.").classes("text-center mt-4")
+        return
+
     chart_builder(df)
 
     if show_table and not df.empty:

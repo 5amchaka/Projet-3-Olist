@@ -1,5 +1,6 @@
 """Moteur de benchmark SQL — mesure les performances avant/apres optimisation."""
 
+import sqlite3
 import statistics
 import time
 from dataclasses import dataclass
@@ -138,5 +139,5 @@ def _run_explain(conn, sql: str) -> list[str]:
         if rows:
             return [row[-1] for row in rows]
         return ["(aucun plan)"]
-    except Exception as e:
+    except sqlite3.Error as e:
         return [f"Erreur : {e}"]

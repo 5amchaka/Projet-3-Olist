@@ -4,6 +4,7 @@
 PRIMARY = "#00C853"       # vert vif
 SECONDARY = "#FFD600"     # or
 ACCENT = "#00E5FF"        # cyan accent
+DANGER = "#FF5252"        # rouge alerte
 BG_DARK = "#121212"
 BG_CARD = "#1E1E1E"
 TEXT_PRIMARY = "#E0E0E0"

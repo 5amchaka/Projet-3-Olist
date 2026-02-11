@@ -1,10 +1,11 @@
-.PHONY: help install download etl test test-integration test-all
+.PHONY: help install download etl dashboard test test-integration test-all
 
 help:
 	@echo "Targets disponibles:"
 	@echo "  make install           # Creer l'environnement + installer les dependances"
 	@echo "  make download          # Telecharger et valider les 9 CSV Olist"
 	@echo "  make etl               # Executer le pipeline ETL complet"
+	@echo "  make dashboard         # Lancer le dashboard NiceGUI"
 	@echo "  make test              # Tests hors integration"
 	@echo "  make test-integration  # Tests d'integrite CSV <-> DW"
 	@echo "  make test-all          # Tous les tests"
@@ -17,6 +18,9 @@ download:
 
 etl:
 	uv run python -m src.etl
+
+dashboard:
+	uv run --extra dashboard python -m src.dashboard
 
 test:
 	uv run python -m pytest tests/ -v -m "not integration"

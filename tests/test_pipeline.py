@@ -1,11 +1,11 @@
 """Tests pour l'orchestrateur du pipeline ETL."""
 
 import logging
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.etl.pipeline import _log_phase, run_full_pipeline
+from src.etl.pipeline import PipelinePhaseError, _log_phase, run_full_pipeline
 
 
 class TestLogPhase:
@@ -78,18 +78,64 @@ class TestRunFullPipeline:
 
     @patch("src.etl.pipeline.load_all_raw")
     def test_extraction_error_propagates(self, mock_extract):
-        """Une erreur d'extraction doit remonter sans être avalée."""
+        """Une erreur d'extraction doit être encapsulée avec le contexte de phase."""
         mock_extract.side_effect = RuntimeError("CSV manquant")
 
-        with pytest.raises(RuntimeError, match="CSV manquant"):
+        with pytest.raises(PipelinePhaseError, match="PHASE 1: EXTRACT failed"):
             run_full_pipeline()
 
     @patch("src.etl.pipeline.clean_all")
     @patch("src.etl.pipeline.load_all_raw")
     def test_transform_error_propagates(self, mock_extract, mock_clean):
-        """Une erreur de transformation doit remonter sans être avalée."""
+        """Une erreur de transformation doit être encapsulée avec le contexte de phase."""
         mock_extract.return_value = {}
         mock_clean.side_effect = ValueError("Colonne manquante")
 
-        with pytest.raises(ValueError, match="Colonne manquante"):
+        with pytest.raises(PipelinePhaseError, match="PHASE 2: TRANSFORM failed"):
+            run_full_pipeline()
+
+    @patch("src.etl.pipeline.load_to_sqlite")
+    @patch("src.etl.pipeline.get_engine")
+    @patch("src.etl.pipeline.build_fact_orders")
+    @patch("src.etl.pipeline.build_dim_products")
+    @patch("src.etl.pipeline.build_dim_sellers")
+    @patch("src.etl.pipeline.build_dim_customers")
+    @patch("src.etl.pipeline.build_dim_geolocation")
+    @patch("src.etl.pipeline.build_dim_dates")
+    @patch("src.etl.pipeline.clean_all")
+    @patch("src.etl.pipeline.load_all_raw")
+    def test_load_error_wrapped_with_phase_context(
+        self,
+        mock_extract,
+        mock_clean,
+        mock_dim_dates,
+        mock_dim_geo,
+        mock_dim_cust,
+        mock_dim_sell,
+        mock_dim_prod,
+        mock_fact,
+        _mock_engine,
+        mock_load,
+    ):
+        """Une erreur de chargement doit être contextualisée avec PHASE 4."""
+        mock_extract.return_value = {"orders": MagicMock(), "geolocation": MagicMock()}
+        mock_clean.return_value = {
+            "orders": MagicMock(),
+            "geolocation": MagicMock(),
+            "customers": MagicMock(),
+            "sellers": MagicMock(),
+            "products": MagicMock(),
+            "order_items": MagicMock(),
+            "order_payments": MagicMock(),
+            "order_reviews": MagicMock(),
+        }
+        mock_dim_dates.return_value = MagicMock(__len__=lambda s: 10)
+        mock_dim_geo.return_value = MagicMock(__len__=lambda s: 5)
+        mock_dim_cust.return_value = MagicMock(__len__=lambda s: 3)
+        mock_dim_sell.return_value = MagicMock(__len__=lambda s: 2)
+        mock_dim_prod.return_value = MagicMock(__len__=lambda s: 4)
+        mock_fact.return_value = MagicMock(__len__=lambda s: 20)
+        mock_load.side_effect = RuntimeError("DB lock")
+
+        with pytest.raises(PipelinePhaseError, match="PHASE 4: LOAD INTO SQLITE failed"):
             run_full_pipeline()

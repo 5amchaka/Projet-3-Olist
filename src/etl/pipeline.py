@@ -1,6 +1,8 @@
 """Orchestrateur : exécuter le pipeline ETL complet."""
 
 import logging
+from collections.abc import Callable
+from typing import TypeVar
 
 from src.config import DATABASE_DIR
 from src.database.connection import get_engine
@@ -19,6 +21,11 @@ from src.etl.load import (
 logger = logging.getLogger(__name__)
 
 _SEPARATOR = "=" * 60
+_T = TypeVar("_T")
+
+
+class PipelinePhaseError(RuntimeError):
+    """Erreur du pipeline enrichie avec le nom de la phase en échec."""
 
 
 def _log_phase(title: str) -> None:
@@ -28,53 +35,70 @@ def _log_phase(title: str) -> None:
     logger.info(_SEPARATOR)
 
 
-def run_full_pipeline():
+def _run_phase(title: str, action: Callable[[], _T]) -> _T:
+    """Exécuter une phase avec logs et contextualisation des erreurs."""
+    _log_phase(title)
+    try:
+        return action()
+    except Exception as exc:
+        logger.exception("%s FAILED", title)
+        raise PipelinePhaseError(f"{title} failed: {exc}") from exc
+
+
+def run_full_pipeline() -> None:
     """Extraction -> Transformation -> Construction des dimensions -> Chargement dans SQLite."""
 
-    # ── Extraction ────────────────────────────────────────────────────────
-    _log_phase("PHASE 1: EXTRACT")
-    dfs = load_all_raw()
+    dfs = _run_phase("PHASE 1: EXTRACT", load_all_raw)
 
-    # ── Transformation ──────────────────────────────────────────────────
-    _log_phase("PHASE 2: TRANSFORM")
-    cleaned = clean_all(dfs)
+    cleaned = _run_phase("PHASE 2: TRANSFORM", lambda: clean_all(dfs))
 
-    # ── Construction des dimensions ───────────────────────────────────────
-    _log_phase("PHASE 3: BUILD DIMENSIONS")
+    def _build_dimensions_and_fact():
+        dim_dates = build_dim_dates(cleaned["orders"])
+        logger.info("dim_dates: %s entries", f"{len(dim_dates):,}")
 
-    dim_dates = build_dim_dates(cleaned["orders"])
-    logger.info("dim_dates: %s entries", f"{len(dim_dates):,}")
+        dim_geo = build_dim_geolocation(cleaned["geolocation"])
+        logger.info("dim_geolocation: %s locations", f"{len(dim_geo):,}")
 
-    dim_geo = build_dim_geolocation(cleaned["geolocation"])
-    logger.info("dim_geolocation: %s locations", f"{len(dim_geo):,}")
+        dim_customers = build_dim_customers(cleaned["customers"], dim_geo)
+        logger.info("dim_customers: %s customers", f"{len(dim_customers):,}")
 
-    dim_customers = build_dim_customers(cleaned["customers"], dim_geo)
-    logger.info("dim_customers: %s customers", f"{len(dim_customers):,}")
+        dim_sellers = build_dim_sellers(cleaned["sellers"], dim_geo)
+        logger.info("dim_sellers: %s sellers", f"{len(dim_sellers):,}")
 
-    dim_sellers = build_dim_sellers(cleaned["sellers"], dim_geo)
-    logger.info("dim_sellers: %s sellers", f"{len(dim_sellers):,}")
+        dim_products = build_dim_products(cleaned["products"])
+        logger.info("dim_products: %s products", f"{len(dim_products):,}")
 
-    dim_products = build_dim_products(cleaned["products"])
-    logger.info("dim_products: %s products", f"{len(dim_products):,}")
+        fact = build_fact_orders(
+            cleaned["order_items"],
+            cleaned["orders"],
+            cleaned["order_payments"],
+            cleaned["order_reviews"],
+            dim_customers,
+            dim_sellers,
+            dim_products,
+        )
+        logger.info("fact_orders: %s rows", f"{len(fact):,}")
+        return dim_dates, dim_geo, dim_customers, dim_sellers, dim_products, fact
 
-    fact = build_fact_orders(
-        cleaned["order_items"],
-        cleaned["orders"],
-        cleaned["order_payments"],
-        cleaned["order_reviews"],
-        dim_customers,
-        dim_sellers,
-        dim_products,
+    dim_dates, dim_geo, dim_customers, dim_sellers, dim_products, fact = _run_phase(
+        "PHASE 3: BUILD DIMENSIONS",
+        _build_dimensions_and_fact,
     )
-    logger.info("fact_orders: %s rows", f"{len(fact):,}")
 
-    # ── Chargement ───────────────────────────────────────────────────────
-    _log_phase("PHASE 4: LOAD INTO SQLITE")
+    def _load():
+        DATABASE_DIR.mkdir(parents=True, exist_ok=True)
+        engine = get_engine()
+        load_to_sqlite(
+            engine,
+            dim_dates,
+            dim_geo,
+            dim_customers,
+            dim_sellers,
+            dim_products,
+            fact,
+        )
 
-    DATABASE_DIR.mkdir(parents=True, exist_ok=True)
-    engine = get_engine()
-
-    load_to_sqlite(engine, dim_dates, dim_geo, dim_customers, dim_sellers, dim_products, fact)
+    _run_phase("PHASE 4: LOAD INTO SQLITE", _load)
 
     _log_phase("PIPELINE COMPLETE")
 

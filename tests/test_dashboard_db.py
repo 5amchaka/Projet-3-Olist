@@ -25,11 +25,13 @@ def test_get_connection_sets_temp_store_memory(tmp_path, monkeypatch):
 
     ro_conn = dashboard_db.get_connection()
     temp_store = ro_conn.execute("PRAGMA temp_store").fetchone()[0]
+    busy_timeout = ro_conn.execute("PRAGMA busy_timeout").fetchone()[0]
     distinct_orders = ro_conn.execute(
         "SELECT COUNT(DISTINCT order_id) FROM fact_orders"
     ).fetchone()[0]
 
     assert temp_store == 2  # 2 = MEMORY
+    assert busy_timeout == 5000
     assert distinct_orders == 2
 
     ro_conn.close()

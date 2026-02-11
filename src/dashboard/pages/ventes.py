@@ -62,10 +62,9 @@ def content() -> None:
     sql_viewer(
         title="Panier moyen mensuel",
         description=(
-            "<code>CTE</code>, "
-            "<code>COUNT(DISTINCT)</code>, "
-            "<code>NULLIF</code>, "
-            "<code>Calcul panier = CA / commandes</code>"
+            "<code>Vue v_monthly_sales</code>, "
+            "<code>ORDER BY</code>, "
+            "<code>projection des metriques mensuelles</code>"
         ),
         sql_file="basket_avg.sql",
         chart_builder=_build_basket_avg,
@@ -188,6 +187,9 @@ def _build_basket_avg(df: pd.DataFrame) -> None:
 
     # Filtrer les mois non representatifs (< 100 commandes)
     df = df[df["monthly_orders"] >= 100].reset_index(drop=True)
+    if df.empty:
+        ui.label("Aucune donnee disponible apres filtrage.").classes("text-center mt-4")
+        return
 
     fig = go.Figure()
     fig.add_trace(

@@ -1,5 +1,6 @@
 """Page Vue d'ensemble — KPIs globaux et sparkline mensuelle."""
 
+import pandas as pd
 import plotly.graph_objects as go
 from nicegui import ui
 
@@ -33,48 +34,64 @@ def content() -> None:
 
     # ── KPI cards ─────────────────────────────────────────────────────────
     _, df_kpis = db.query_from_file("overview_kpis.sql")
-    row = df_kpis.iloc[0]
+    if df_kpis.empty:
+        ui.label("Aucune donnee KPI disponible.").classes("text-center mt-4")
+    else:
+        row = df_kpis.iloc[0]
 
-    total_orders = f"{int(row['total_orders']):,}".replace(",", " ")
-    total_revenue = f"R$ {row['total_revenue'] / 1_000_000:.1f}M"
-    avg_review = f"{row['avg_review']:.1f} / 5"
-    avg_delivery = f"{row['avg_delivery_days']:.1f} jours"
+        total_orders_raw = row.get("total_orders", 0)
+        total_revenue_raw = row.get("total_revenue", 0.0)
+        avg_review_raw = row.get("avg_review", 0.0)
+        avg_delivery_raw = row.get("avg_delivery_days", 0.0)
 
-    with ui.row().classes("w-full flex-wrap gap-4"):
-        kpi_card(
-            title="Commandes livrees",
-            value=total_orders,
-            icon="shopping_cart",
-            color=PRIMARY,
-        )
-        kpi_card(
-            title="Chiffre d'affaires",
-            value=total_revenue,
-            icon="attach_money",
-            color=SECONDARY,
-        )
-        kpi_card(
-            title="Note moyenne",
-            value=avg_review,
-            icon="star",
-            color=ACCENT,
-        )
-        kpi_card(
-            title="Delai moyen",
-            value=avg_delivery,
-            icon="local_shipping",
-            color=CHART_COLORS[3],
-        )
+        total_orders_num = int(total_orders_raw) if pd.notna(total_orders_raw) else 0
+        total_revenue_num = float(total_revenue_raw) if pd.notna(total_revenue_raw) else 0.0
+        review_val = float(avg_review_raw) if pd.notna(avg_review_raw) else 0.0
+        avg_delivery_num = float(avg_delivery_raw) if pd.notna(avg_delivery_raw) else 0.0
 
-    # ── Insight KPI ─────────────────────────────────────────────────────
-    review_val = row["avg_review"]
-    satisfaction = "excellente" if review_val >= 4.0 else "correcte" if review_val >= 3.0 else "a ameliorer"
-    insight_block(
-        f"Avec <b>{total_orders}</b> commandes livrees pour un CA de <b>{total_revenue}</b>, "
-        f"la note moyenne de <b>{review_val:.1f}/5</b> indique une satisfaction client "
-        f"<b>{satisfaction}</b>. Le delai moyen de <b>{avg_delivery}</b> reste competitif "
-        f"pour le e-commerce bresilien."
-    )
+        total_orders = f"{total_orders_num:,}".replace(",", " ")
+        total_revenue = f"R$ {total_revenue_num / 1_000_000:.1f}M"
+        avg_review = f"{review_val:.1f} / 5"
+        avg_delivery = f"{avg_delivery_num:.1f} jours"
+
+        with ui.row().classes("w-full flex-wrap gap-4"):
+            kpi_card(
+                title="Commandes livrees",
+                value=total_orders,
+                icon="shopping_cart",
+                color=PRIMARY,
+            )
+            kpi_card(
+                title="Chiffre d'affaires",
+                value=total_revenue,
+                icon="attach_money",
+                color=SECONDARY,
+            )
+            kpi_card(
+                title="Note moyenne",
+                value=avg_review,
+                icon="star",
+                color=ACCENT,
+            )
+            kpi_card(
+                title="Delai moyen",
+                value=avg_delivery,
+                icon="local_shipping",
+                color=CHART_COLORS[3],
+            )
+
+        # ── Insight KPI ─────────────────────────────────────────────────────
+        satisfaction = (
+            "excellente" if review_val >= 4.0
+            else "correcte" if review_val >= 3.0
+            else "a ameliorer"
+        )
+        insight_block(
+            f"Avec <b>{total_orders}</b> commandes livrees pour un CA de <b>{total_revenue}</b>, "
+            f"la note moyenne de <b>{review_val:.1f}/5</b> indique une satisfaction client "
+            f"<b>{satisfaction}</b>. Le delai moyen de <b>{avg_delivery}</b> reste competitif "
+            f"pour le e-commerce bresilien."
+        )
 
     # ── Sparkline mensuelle ───────────────────────────────────────────────
     def _build_sparkline(df):

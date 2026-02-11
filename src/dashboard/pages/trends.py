@@ -34,6 +34,9 @@ def content() -> None:
     def _build_trends_chart(df):
         # Filtrer les mois avec CA < 10k (débuts non représentatifs)
         df = df[df["monthly_revenue"] >= 10_000].reset_index(drop=True)
+        if df.empty:
+            ui.label("Aucune donnee disponible apres filtrage.").classes("text-center mt-4")
+            return
 
         # Plafonner la croissance à ±100% pour éviter les pics aberrants
         growth_capped = df["growth_pct"].clip(-100, 100)
@@ -131,8 +134,8 @@ def content() -> None:
     sql_viewer(
         title="Analyse des tendances mensuelles",
         description=(
-            "CTE (WITH ... AS), fonctions de fenetre (LAG, SUM OVER), "
-            "GROUP BY, COUNT(DISTINCT), NULLIF, ROUND"
+            "Vue SQL reutilisee (<code>v_monthly_sales</code>), "
+            "fonctions de fenetre (LAG, SUM OVER), NULLIF, ROUND"
         ),
         sql_file="trends_monthly.sql",
         chart_builder=_build_trends_chart,

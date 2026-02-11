@@ -44,7 +44,7 @@ def content() -> None:
     sql_viewer(
         title="Lifetime Value (LTV) par cohorte",
         description=(
-            "<code>CTEs multi-niveaux (4)</code>, "
+            "<code>CTEs multi-niveaux (3)</code>, "
             "<code>SUM() OVER (PARTITION BY ... ORDER BY ...)</code>, "
             "<code>Sous-requete correlee</code>, "
             "<code>Calcul delta mois AAAAMM</code>"
@@ -63,6 +63,9 @@ def _build_new_vs_recurring(df: pd.DataFrame) -> None:
 
     # Filtrer les mois non representatifs
     df = df[df["total"] >= 50].reset_index(drop=True)
+    if df.empty:
+        ui.label("Aucune donnee disponible apres filtrage.").classes("text-center mt-4")
+        return
 
     fig = go.Figure()
 

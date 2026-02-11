@@ -12,7 +12,7 @@ from src.dashboard.components.benchmark import (
 )
 from src.dashboard.components.kpi_card import kpi_card
 from src.dashboard.components.page_layout import layout
-from src.dashboard.theme import ACCENT, BG_CARD, PRIMARY, SECONDARY
+from src.dashboard.theme import ACCENT, BG_CARD, DANGER, PRIMARY, SECONDARY
 
 # ── Comparaisons avant/apres ─────────────────────────────────────────────
 
@@ -49,28 +49,29 @@ COMPARISONS = [
         "title": "SELECT * vs colonnes ciblees",
         "technique": "Projection minimale",
         "icon": "compress",
-        "before_label": "SELECT * — toutes les colonnes",
+        "before_label": "SELECT * + LIMIT 1000",
         "before_sql": (
             "SELECT *\n"
             "FROM fact_orders\n"
-            "ORDER BY date_key DESC"
+            "ORDER BY date_key DESC\n"
+            "LIMIT 1000"
         ),
-        "after_label": "Colonnes ciblees + LIMIT",
+        "after_label": "Colonnes ciblees + LIMIT 1000",
         "after_sql": (
             "SELECT order_id, order_status, price\n"
             "FROM fact_orders\n"
             "ORDER BY date_key DESC\n"
-            "LIMIT 100"
+            "LIMIT 1000"
         ),
         "explanation": (
-            "**Technique : Projection minimale + LIMIT**\n\n"
+            "**Technique : Projection minimale (comparaison a volume egal)**\n\n"
             "- `SELECT *` transfere **toutes les colonnes**, meme inutilisees — "
             "augmente le volume de donnees en memoire et empeche l'utilisation "
             "d'index couvrants (covering index).\n\n"
-            "- En selectionnant uniquement les colonnes necessaires et en ajoutant "
-            "`LIMIT`, on reduit drastiquement le volume de donnees traite.\n\n"
+            "- Ici, les deux requetes lisent **le meme nombre de lignes** "
+            "(LIMIT 1000) pour isoler l'effet de la projection.\n\n"
             "**Bonne pratique :** toujours nommer explicitement les colonnes "
-            "et limiter les resultats en production."
+            "necessaires, surtout sur les requetes interactives."
         ),
         "kpi_icon": "compress",
         "kpi_color": SECONDARY,
@@ -255,7 +256,7 @@ def _render_summary_chart(results: list[BenchmarkResult]) -> None:
                     "name": "Avant",
                     "type": "bar",
                     "data": before_vals,
-                    "itemStyle": {"color": "#FF5252"},
+                    "itemStyle": {"color": DANGER},
                     "label": {
                         "show": True,
                         "position": "right",
@@ -304,7 +305,7 @@ def _render_comparison(comp: dict, result: BenchmarkResult) -> None:
             "Avant",
             f"{result.time_before_ms} ms",
             f"± {result.std_before_ms} ms",
-            "#FF5252",
+            DANGER,
         )
         _mini_metric(
             "Apres",
@@ -335,7 +336,7 @@ def _render_comparison(comp: dict, result: BenchmarkResult) -> None:
         with ui.row().classes("w-full gap-4"):
             with ui.column().classes("flex-1"):
                 ui.label(comp["before_label"]).classes("font-bold").style(
-                    "color: #FF5252"
+                    f"color: {DANGER}"
                 )
                 ui.code(comp["before_sql"], language="sql").classes("w-full")
             with ui.column().classes("flex-1"):
@@ -351,9 +352,9 @@ def _render_comparison(comp: dict, result: BenchmarkResult) -> None:
         with ui.row().classes("w-full gap-4"):
             with ui.column().classes("flex-1"):
                 ui.label("AVANT").classes("text-xs font-bold").style(
-                    "color: #FF5252"
+                    f"color: {DANGER}"
                 )
-                _render_explain_block(result.explain_before, "#FF5252")
+                _render_explain_block(result.explain_before, DANGER)
             with ui.column().classes("flex-1"):
                 ui.label("APRES").classes("text-xs font-bold").style(
                     f"color: {PRIMARY}"
@@ -412,7 +413,7 @@ def _render_mini_chart(result: BenchmarkResult) -> None:
                     "type": "bar",
                     "data": [
                         {"value": result.time_after_ms, "itemStyle": {"color": PRIMARY}},
-                        {"value": result.time_before_ms, "itemStyle": {"color": "#FF5252"}},
+                        {"value": result.time_before_ms, "itemStyle": {"color": DANGER}},
                     ],
                     "barWidth": "50%",
                     "label": {

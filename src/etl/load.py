@@ -2,8 +2,14 @@
 
 import functools
 import logging
+import os
+import sqlite3
+from collections.abc import Iterator
+from pathlib import Path
 
 import pandas as pd
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection, Engine
 
 from src.config import PROJECT_ROOT
 from src.etl.utils import safe_mode
@@ -19,6 +25,51 @@ def _add_surrogate_key(df: pd.DataFrame, key_name: str) -> pd.DataFrame:
     df.index += 1
     df.index.name = key_name
     return df.reset_index()
+
+
+def _iter_sql_statements(script: str) -> Iterator[str]:
+    """Découper un script SQL en instructions complètes."""
+    buffer = ""
+    for line in script.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        buffer = f"{buffer}\n{line}" if buffer else line
+        if sqlite3.complete_statement(buffer):
+            statement = buffer.strip()
+            if statement.endswith(";"):
+                statement = statement[:-1]
+            if statement:
+                yield statement
+            buffer = ""
+
+    if buffer.strip():
+        yield buffer.strip()
+
+
+def _execute_sql_script(conn: Connection, script: str) -> None:
+    """Exécuter un script SQL instruction par instruction dans la transaction courante."""
+    for statement in _iter_sql_statements(script):
+        if statement.upper().startswith("PRAGMA "):
+            continue
+        conn.exec_driver_sql(statement)
+
+
+def _load_into_engine(
+    engine: Engine,
+    ddl: str,
+    views_sql: str,
+    tables: list[tuple[str, pd.DataFrame]],
+) -> None:
+    """Créer le schéma, charger les tables et créer les vues dans une même session."""
+    with engine.begin() as conn:
+        _execute_sql_script(conn, ddl)
+        for name, df in tables:
+            logger.info("Loading %s (%s rows)...", name, f"{len(df):,}")
+            df.to_sql(name, conn, if_exists="append", index=False, chunksize=5000)
+        if views_sql:
+            _execute_sql_script(conn, views_sql)
+            logger.info("SQL views created from views.sql.")
 
 
 _safe_mode_not_defined = functools.partial(safe_mode, default="not_defined")
@@ -193,14 +244,14 @@ def build_fact_orders(
 # ── Chargeur SQLite ──────────────────────────────────────────────────────
 
 def load_to_sqlite(
-    engine,
+    engine: Engine,
     dim_dates: pd.DataFrame,
     dim_geo: pd.DataFrame,
     dim_customers: pd.DataFrame,
     dim_sellers: pd.DataFrame,
     dim_products: pd.DataFrame,
     fact: pd.DataFrame,
-):
+) -> None:
     """Charger toutes les tables de dimension et de faits dans SQLite (transaction atomique)."""
     ddl_path = PROJECT_ROOT / "sql" / "create_star_schema.sql"
     ddl = ddl_path.read_text()
@@ -217,16 +268,41 @@ def load_to_sqlite(
     views_path = PROJECT_ROOT / "sql" / "views.sql"
     views_sql = views_path.read_text() if views_path.exists() else ""
 
-    with engine.connect() as conn:
-        # DDL + inserts dans une seule transaction
-        conn.connection.executescript(ddl)
-        for name, df in tables:
-            logger.info("Loading %s (%s rows)...", name, f"{len(df):,}")
-            df.to_sql(name, conn, if_exists="append", index=False, chunksize=5000)
-        # Vues réutilisables
-        if views_sql:
-            conn.connection.executescript(views_sql)
-            logger.info("SQL views created from views.sql.")
-        conn.commit()
+    # SQLite peut auto-committer certains DDL; pour garantir l'atomicité
+    # d'un refresh complet, on charge d'abord dans un fichier temporaire
+    # puis on remplace la DB cible seulement si tout le chargement réussit.
+    db_path_str = engine.url.database
+    is_sqlite_file = (
+        engine.dialect.name == "sqlite"
+        and db_path_str
+        and db_path_str != ":memory:"
+    )
+
+    if is_sqlite_file:
+        db_path = Path(db_path_str)
+        tmp_db_path = db_path.with_name(f".{db_path.name}.tmp")
+        tmp_engine = create_engine(f"sqlite:///{tmp_db_path}")
+
+        @event.listens_for(tmp_engine, "connect")
+        def _set_sqlite_pragmas(dbapi_conn, _connection_record) -> None:
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+        try:
+            _load_into_engine(tmp_engine, ddl, views_sql, tables)
+            tmp_engine.dispose()
+            engine.dispose()
+            for sidecar in (Path(f"{db_path}-wal"), Path(f"{db_path}-shm")):
+                if sidecar.exists():
+                    sidecar.unlink()
+            os.replace(tmp_db_path, db_path)
+        except Exception:
+            tmp_engine.dispose()
+            if tmp_db_path.exists():
+                tmp_db_path.unlink()
+            raise
+    else:
+        _load_into_engine(engine, ddl, views_sql, tables)
 
     logger.info("All tables loaded successfully.")

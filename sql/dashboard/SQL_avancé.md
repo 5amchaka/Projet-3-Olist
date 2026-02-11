@@ -22,6 +22,19 @@ Objectifs :
 - Créer des KPI/graphiques adéquates
 - (optionnel) Dashboard avec design professionnel (power bi ou streamlit)
 
+## Compatibilite moteur SQL
+
+Ce support est pedagogique et melange des exemples multi-moteurs (SQLite, PostgreSQL, DuckDB).
+
+Pour ce projet, les fichiers executables en production sont ceux de `sql/dashboard/*.sql` et `sql/views.sql` sur SQLite.
+
+Les syntaxes suivantes, presentes plus bas comme illustration, ne sont pas executables telles quelles sur SQLite :
+
+- `DATE_TRUNC(...)`
+- `CREATE MATERIALIZED VIEW ...`
+- `REFRESH MATERIALIZED VIEW ...`
+- `VACUUM ANALYZE`
+
 ﻿# Les CTE (Common Table Expressions)
 
 Les expressions de table communes (CTE) permettent de définir des tables temporaires, ce qui rend les requêtes plus lisibles et modulaires.

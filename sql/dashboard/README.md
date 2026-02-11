@@ -20,17 +20,16 @@ Schema en etoile defini dans `sql/create_star_schema.sql` :
 |---------|------|-------------|
 | `overview_kpis.sql` | Vue d'ensemble | `COUNT(DISTINCT CASE WHEN)`, `SUM`, `AVG`, `ROUND`, `NULLIF` |
 | `overview_monthly_mini.sql` | Vue d'ensemble | `JOIN`, `GROUP BY`, `PRINTF`, `ORDER BY` |
-| `trends_monthly.sql` | Tendances | CTE (`WITH`), `LAG()`, `SUM() OVER` (running total), `NULLIF` |
+| `trends_monthly.sql` | Tendances | `LAG()`, `SUM() OVER` (running total), `NULLIF` |
 | `rfm_segmentation.sql` | Segmentation RFM | CTEs multi-niveaux, `NTILE(5)`, `JULIANDAY()`, `CASE WHEN` classification |
 | `pareto_sellers.sql` | Pareto vendeurs | `ROW_NUMBER()`, `PERCENT_RANK()`, `SUM() OVER (ROWS UNBOUNDED PRECEDING)` |
 | `cohorts_retention.sql` | Cohortes | CTEs, calcul delta mois (AAAAMM), `COUNT(DISTINCT)`, self-join |
 | `seller_scoring.sql` | Scoring vendeurs | `NTILE()`, `RANK()`, `DENSE_RANK()`, scoring multi-criteres |
-| `payment_gap_analysis.sql` | — | Analyse des ecarts paiements vs facturation |
 | `top_products.sql` | Ventes | CTE, `ROW_NUMBER() OVER`, `COALESCE`, `LIMIT`, JOIN `dim_products` |
 | `ca_yoy.sql` | Ventes | CTE, `LAG() OVER` (Year-over-Year), `NULLIF`, comparaison annuelle |
-| `basket_avg.sql` | Ventes | CTE, `COUNT(DISTINCT)`, panier moyen = CA / commandes, `NULLIF` |
+| `basket_avg.sql` | Ventes | reutilisation de `v_monthly_sales`, projection des colonnes utiles |
 | `new_vs_recurring.sql` | Clients | CTEs multi-niveaux, `MIN()`, `CASE WHEN` classification nouveau/recurrent |
-| `ltv_cohorts.sql` | Clients | 4 CTEs, `SUM() OVER (PARTITION BY)`, sous-requete correlee, LTV cumulative |
+| `ltv_cohorts.sql` | Clients | 3 CTEs, `SUM() OVER (PARTITION BY)`, sous-requete correlee, LTV cumulative |
 
 ## Fichiers SQL complementaires (hors dashboard)
 
@@ -38,6 +37,7 @@ Schema en etoile defini dans `sql/create_star_schema.sql` :
 |---------|-------------|
 | `sql/views.sql` | 3 vues SQL reutilisables : `v_monthly_sales`, `v_customer_cohorts`, `v_orders_enriched` |
 | `sql/explain_analysis.sql` | Analyse `EXPLAIN QUERY PLAN` sur 4 requetes cles + synthese des index |
+| `sql/dashboard/payment_gap_analysis.sql` | Investigation ponctuelle sur les ecarts paiements/facturation (non utilisee par l'UI du dashboard) |
 
 ## Utilisation standalone
 
@@ -78,7 +78,7 @@ sqlite3 data/database/olist_dw.db < sql/explain_analysis.sql
 ### CTEs (Common Table Expressions)
 - CTE simple : `WITH cte AS (...) SELECT ...`
 - CTEs enchainees : `WITH cte1 AS (...), cte2 AS (...) SELECT ...`
-- Jusqu'a 4 CTEs dans `cohorts_retention.sql` et `ltv_cohorts.sql`
+- Jusqu'a 3 CTEs dans `rfm_segmentation.sql`, `cohorts_retention.sql` et `ltv_cohorts.sql`
 
 ### Vues SQL (CREATE VIEW)
 - `CREATE VIEW ... AS SELECT ...` — encapsulation de requetes reutilisables

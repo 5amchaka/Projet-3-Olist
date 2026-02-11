@@ -43,6 +43,16 @@ La base SQLite sera creee dans `data/database/olist_dw.db`.
 uv run python -m pytest tests/ -v
 ```
 
+### Commandes rapides (Makefile)
+
+```bash
+make install
+make download
+make etl
+make test
+make test-integration
+```
+
 ## Structure
 
 ```
@@ -65,6 +75,7 @@ docs/               # Documentation du schema
 |----------|---------|
 | [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) | Choix de modelisation : pourquoi et comment les 9 CSV deviennent 6 tables |
 | [docs/exploration_analysis.md](docs/exploration_analysis.md) | Analyse empirique des donnees brutes : chiffres cles, constats, justifications |
+| [docs/data_dictionary.md](docs/data_dictionary.md) | Dictionnaire de donnees : colonnes, types SQLite, grain et semantics metier |
 | [notebooks/quickstart.ipynb](notebooks/quickstart.ipynb) | Demarrage rapide : telecharger, lancer le pipeline, verifier la base |
 | [notebooks/exploration_csv.ipynb](notebooks/exploration_csv.ipynb) | Notebook d'exploration : profils, cardinalites, visualisations par dataset |
 | [notebooks/comparaison_csv_bdd.ipynb](notebooks/comparaison_csv_bdd.ipynb) | Tracabilite CSV → BDD : volumetrie, distributions avant/apres, perdu/gagne |
@@ -90,3 +101,31 @@ Voir [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) pour le detail et 
 | products | 32k | Catalogue produits |
 | sellers | 3k | Vendeurs |
 | category_translation | 71 | Traduction des categories PT->EN |
+
+## Operations
+
+- Refresh complet de l'entrepot (reconstruction des tables) :
+
+```bash
+make etl
+```
+
+- Verification rapide apres refresh :
+
+```bash
+make test
+make test-integration
+```
+
+## Troubleshooting
+
+- `KAGGLE_USERNAME and KAGGLE_KEY must be set`
+  - Verifier `.env` (copie de `.env.example`) et relancer `make download`.
+- `kaggle CLI not found`
+  - Installer les dependances avec `make install`.
+- `Fichier introuvable : data/raw/...`
+  - Les CSV ne sont pas presents. Relancer `make download`.
+- Base SQLite absente pour les tests d'integration
+  - Executer d'abord `make etl`, puis `make test-integration`.
+- `PHASE X: ... failed: ...`
+  - Le pipeline remonte maintenant l'etape en echec (extract/transform/build/load). Lire les logs juste au-dessus pour la cause racine.

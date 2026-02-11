@@ -43,12 +43,36 @@ La base SQLite sera creee dans `data/database/olist_dw.db`.
 uv run python -m pytest tests/ -v
 ```
 
+### 6. Lancer le dashboard
+
+Installer les dependances dashboard puis lancer NiceGUI :
+
+```bash
+uv sync --extra dashboard
+uv run --extra dashboard python -m src.dashboard
+```
+
+Le dashboard est disponible sur `http://localhost:8080`.
+Le port peut etre surcharge via `DASHBOARD_PORT` :
+
+```bash
+DASHBOARD_PORT=8090 uv run --extra dashboard python -m src.dashboard
+```
+
+Par defaut, NiceGUI n'essaie pas d'ouvrir automatiquement un navigateur (utile en SSH/WSL/headless).
+Pour forcer l'ouverture auto :
+
+```bash
+DASHBOARD_SHOW_BROWSER=1 uv run --extra dashboard python -m src.dashboard
+```
+
 ### Commandes rapides (Makefile)
 
 ```bash
 make install
 make download
 make etl
+make dashboard
 make test
 make test-integration
 ```
@@ -61,6 +85,7 @@ data/processed/     # Donnees intermediaires
 data/staging/       # Staging
 data/database/      # Fichier SQLite (data warehouse)
 src/etl/            # Pipeline ETL (extract, transform, load)
+src/dashboard/      # Dashboard NiceGUI (pages analytiques SQL)
 src/database/       # Connexion et modeles
 sql/                # DDL + requetes SQL
 scripts/            # Scripts utilitaires (download, etc.)
@@ -76,6 +101,8 @@ docs/               # Documentation du schema
 | [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) | Choix de modelisation : pourquoi et comment les 9 CSV deviennent 6 tables |
 | [docs/exploration_analysis.md](docs/exploration_analysis.md) | Analyse empirique des donnees brutes : chiffres cles, constats, justifications |
 | [docs/data_dictionary.md](docs/data_dictionary.md) | Dictionnaire de donnees : colonnes, types SQLite, grain et semantics metier |
+| [docs/dashboard.md](docs/dashboard.md) | Guide dashboard : architecture, pages, lancement, mode presentation |
+| [sql/dashboard/README.md](sql/dashboard/README.md) | Inventaire des requetes SQL utilisees par les pages du dashboard |
 | [notebooks/quickstart.ipynb](notebooks/quickstart.ipynb) | Demarrage rapide : telecharger, lancer le pipeline, verifier la base |
 | [notebooks/exploration_csv.ipynb](notebooks/exploration_csv.ipynb) | Notebook d'exploration : profils, cardinalites, visualisations par dataset |
 | [notebooks/comparaison_csv_bdd.ipynb](notebooks/comparaison_csv_bdd.ipynb) | Tracabilite CSV → BDD : volumetrie, distributions avant/apres, perdu/gagne |

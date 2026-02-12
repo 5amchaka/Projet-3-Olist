@@ -94,7 +94,7 @@ def _build_heatmap(df: pd.DataFrame) -> None:
         "tooltip": {"position": "top"},
         "grid": {
             "top": 40,
-            "bottom": 60,
+            "bottom": 80,
             "left": 120,
             "right": 40,
         },
@@ -120,11 +120,11 @@ def _build_heatmap(df: pd.DataFrame) -> None:
             "calculable": True,
             "orient": "horizontal",
             "left": "center",
-            "bottom": 0,
+            "bottom": 10,
             "inRange": {
                 "color": ["#1a1a2e", "#0d3320", "#1a6640", "#27996b", PRIMARY],
             },
-            "textStyle": {"color": "#ccc"},
+            "textStyle": {"color": "#ccc", "fontSize": 11},
         },
         "series": [
             {

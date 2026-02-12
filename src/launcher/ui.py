@@ -166,3 +166,126 @@ class UIManager:
 ╚{'═' * width}╝{Style.RESET_ALL}
 """
         print(box)
+
+
+class WebSocketUIAdapter(UIManager):
+    """
+    Adaptateur UI qui envoie les événements via WebSocket au lieu du terminal.
+
+    Hérite de UIManager pour garder la compatibilité, mais override les méthodes
+    pour broadcaster via le splash server.
+    """
+
+    def __init__(self, splash_server, event_loop, verbose: bool = False, quiet: bool = False):
+        super().__init__(verbose, quiet)
+        self.splash_server = splash_server
+        self.event_loop = event_loop  # Event loop pour run_coroutine_threadsafe
+
+    def show_matrix_intro(self) -> None:
+        """Skip l'intro Matrix (affichée dans le navigateur)."""
+        pass
+
+    def show_banner(self) -> None:
+        """Skip le banner (affiché dans le navigateur)."""
+        pass
+
+    @contextmanager
+    def phase_context(self, title: str):
+        """Context manager qui broadcast les événements de phase."""
+        self._phase_counter += 1
+        phase_num = self._phase_counter
+
+        # Broadcast phase_start
+        import asyncio
+        from .splash.events import EventType
+
+        self._schedule_broadcast(
+            EventType.PHASE_START,
+            {
+                "phase_num": phase_num,
+                "title": title,
+            }
+        )
+
+        start = time.time()
+        try:
+            yield
+        finally:
+            # Broadcast phase_complete
+            duration_ms = int((time.time() - start) * 1000)
+            self._schedule_broadcast(
+                EventType.PHASE_COMPLETE,
+                {
+                    "phase_num": phase_num,
+                    "duration_ms": duration_ms,
+                }
+            )
+
+    def success(self, message: str) -> None:
+        """Envoie un log de succès via WebSocket."""
+        self._send_log("SUCCESS", message)
+
+    def error(self, message: str) -> None:
+        """Envoie un log d'erreur via WebSocket."""
+        self._send_log("ERROR", message)
+
+    def warning(self, message: str) -> None:
+        """Envoie un log de warning via WebSocket."""
+        if not self.quiet:
+            self._send_log("WARNING", message)
+
+    def info(self, message: str) -> None:
+        """Envoie un log d'info via WebSocket."""
+        if self.verbose or not self.quiet:
+            self._send_log("INFO", message)
+
+    def skip(self, message: str) -> None:
+        """Envoie un log de skip via WebSocket."""
+        if not self.quiet:
+            self._send_log("INFO", f"Skipping: {message}")
+
+    def display_live_log(self, level: str, message: str) -> None:
+        """Envoie un log ETL en temps réel via WebSocket."""
+        if self.quiet and level.upper() not in ["ERROR", "CRITICAL"]:
+            return
+        self._send_log(level.upper(), message)
+
+    def show_success_box(self, url: str) -> None:
+        """Envoie l'événement dashboard_ready via WebSocket."""
+        from .splash.events import EventType
+
+        self._schedule_broadcast(
+            EventType.DASHBOARD_READY,
+            {
+                "url": url,
+                "redirect_delay_ms": 2000,
+            }
+        )
+
+    def _send_log(self, level: str, message: str) -> None:
+        """Envoie un message de log via WebSocket."""
+        from .splash.events import EventType
+
+        self._schedule_broadcast(
+            EventType.LOG,
+            {
+                "level": level,
+                "message": message,
+            }
+        )
+
+    def _schedule_broadcast(self, event_type, data: dict) -> None:
+        """Planifie un broadcast dans l'event loop async."""
+        import asyncio
+        from concurrent.futures import CancelledError
+
+        try:
+            # Planifier la coroutine dans l'event loop principal
+            future = asyncio.run_coroutine_threadsafe(
+                self.splash_server.broadcast_event(event_type, data),
+                self.event_loop
+            )
+            # On n'attend pas le résultat (fire and forget)
+        except (RuntimeError, CancelledError):
+            # Event loop fermé ou erreur, on ignore silencieusement
+            pass

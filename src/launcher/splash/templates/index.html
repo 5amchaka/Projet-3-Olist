@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Olist Dashboard Launcher</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Matrix animation background -->
+    <canvas id="matrix-canvas"></canvas>
+
+    <!-- Main splash container -->
+    <div class="splash-container">
+        <!-- Banner -->
+        <div class="banner">
+            <div class="banner-content">
+                <h1 class="title">OLIST Dashboard Launcher</h1>
+                <div class="subtitle">ETL Pipeline & Analytics</div>
+            </div>
+            <div class="version">v1.0</div>
+        </div>
+
+        <!-- Current phase display -->
+        <div id="current-phase" class="phase-display">
+            <span class="phase-num">INITIALIZING</span>
+            <span class="phase-separator">•</span>
+            <span class="phase-title">Starting launcher...</span>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="progress-container">
+            <div id="progress-bar" class="progress-bar"></div>
+            <div class="progress-text">
+                <span id="progress-percent">0%</span>
+                <span id="progress-phase">Phase 0/6</span>
+            </div>
+        </div>
+
+        <!-- Live logs output -->
+        <div class="logs-container">
+            <div class="logs-header">
+                <span class="logs-title">Live Output</span>
+                <span id="logs-count" class="logs-count">0 messages</span>
+            </div>
+            <div id="log-output" class="log-output"></div>
+        </div>
+
+        <!-- Success state (hidden initially) -->
+        <div id="success-box" class="success-box hidden">
+            <div class="success-icon">✓</div>
+            <h2 class="success-title">Dashboard Ready!</h2>
+            <p class="success-message">
+                Redirecting to <span id="dashboard-url" class="dashboard-url"></span>...
+            </p>
+            <div class="success-spinner"></div>
+        </div>
+
+        <!-- Error state (hidden initially) -->
+        <div id="error-box" class="error-box hidden">
+            <div class="error-icon">✗</div>
+            <h2 class="error-title">Launch Failed</h2>
+            <p id="error-message" class="error-message"></p>
+            <button id="retry-btn" class="retry-btn">Retry Launch</button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <span class="footer-text">Powered by FastAPI + WebSocket</span>
+        <span class="footer-separator">|</span>
+        <span class="footer-text">Olist E-commerce Analytics</span>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/matrix.js"></script>
+    <script src="/static/splash.js"></script>
+</body>
+</html>

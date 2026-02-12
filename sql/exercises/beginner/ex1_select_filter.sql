@@ -5,7 +5,7 @@ SELECT
     order_id,
     order_date,
     price
-FROM fact_orders
+FROM v_orders_enriched
 WHERE
     order_status = 'delivered'
     AND order_date >= '2017-01-01'

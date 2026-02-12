@@ -2,9 +2,11 @@
 -- Solution de référence (méthode simple GROUP BY)
 
 SELECT
-    customer_id,
-    COUNT(*) as nb_orders
-FROM fact_orders
-GROUP BY customer_id
-HAVING COUNT(*) >= 2
+    c.customer_unique_id as customer_id,
+    COUNT(DISTINCT f.order_id) as nb_orders
+FROM fact_orders f
+INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+WHERE f.order_status = 'delivered'
+GROUP BY c.customer_unique_id
+HAVING COUNT(DISTINCT f.order_id) >= 2
 ORDER BY nb_orders DESC

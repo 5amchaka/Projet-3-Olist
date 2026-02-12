@@ -7,10 +7,12 @@ WITH total_revenue AS (
 ),
 product_revenue AS (
     SELECT
-        product_id,
-        SUM(price) as revenue
-    FROM fact_orders
-    GROUP BY product_id
+        p.product_id,
+        SUM(f.price) as revenue
+    FROM fact_orders f
+    INNER JOIN dim_products p ON f.product_key = p.product_key
+    WHERE f.order_status = 'delivered'
+    GROUP BY p.product_id
 )
 SELECT
     product_id,

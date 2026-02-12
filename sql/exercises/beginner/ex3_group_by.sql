@@ -2,10 +2,10 @@
 -- Solution de référence
 
 SELECT
-    c.customer_state as state,
+    c.state as state,
     SUM(o.price) as total_revenue,
-    COUNT(*) as nb_orders
+    COUNT(DISTINCT o.order_id) as nb_orders
 FROM fact_orders o
 INNER JOIN dim_customers c ON o.customer_key = c.customer_key
-GROUP BY c.customer_state
+GROUP BY c.state
 ORDER BY total_revenue DESC

@@ -3,10 +3,12 @@
 
 WITH customer_totals AS (
     SELECT
-        customer_id,
-        SUM(price) as total_spent
-    FROM fact_orders
-    GROUP BY customer_id
+        c.customer_unique_id as customer_id,
+        SUM(f.price) as total_spent
+    FROM fact_orders f
+    INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+    WHERE f.order_status = 'delivered'
+    GROUP BY c.customer_unique_id
 )
 SELECT
     customer_id,

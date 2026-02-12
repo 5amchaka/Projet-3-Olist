@@ -2,8 +2,8 @@
 -- Solution de référence
 
 SELECT
-    order_month as month,
+    month_label as month,
     monthly_revenue,
-    SUM(monthly_revenue) OVER (ORDER BY order_month ROWS UNBOUNDED PRECEDING) as cumulative_revenue
+    SUM(monthly_revenue) OVER (ORDER BY year, month ROWS UNBOUNDED PRECEDING) as cumulative_revenue
 FROM v_monthly_sales
-ORDER BY order_month
+ORDER BY year, month

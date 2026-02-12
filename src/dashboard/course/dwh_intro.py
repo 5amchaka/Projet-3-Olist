@@ -144,137 +144,176 @@ def render_slide_1():
 def render_slide_2():
     """Slide 2 : Processus ETL."""
     ui.label("⚙️ Le Processus ETL").classes('text-4xl font-bold mb-2')
-    ui.label("De 1.5M lignes brutes à un DWH optimisé en 3 étapes").classes('text-2xl text-gray-400 mb-8')
+    ui.label("De 1.5M lignes brutes à un DWH optimisé en 4 phases").classes('text-2xl text-gray-400 mb-8')
 
     ui.markdown("""
-Notre pipeline de transformation suit les **3 étapes classiques** de l'ingénierie des données.
+Notre pipeline suit les **4 phases** définies dans `src/etl/pipeline.py`.
 """).classes('text-gray-300 mb-6')
 
     # Diagramme Mermaid dans une card avec fond
     with ui.card().classes('w-full bg-gray-900/50 p-6 mb-8'):
         ui.mermaid("""
 graph LR
-    A[9 CSV Sources<br/>1 550 871 lignes] -->|Extract| B[DataFrames Pandas]
-    B -->|Transform| C[Cleaning + Engineering]
-    C -->|Load| D[(SQLite DWH<br/>6 tables)]
+    A[9 CSV Sources<br/>1.5M lignes] -->|Phase 1: EXTRACT| B[9 DataFrames bruts]
+    B -->|Phase 2: TRANSFORM| C[9 DataFrames nettoyés]
+    C -->|Phase 3: BUILD| D[5 Dimensions + 1 Fait]
+    D -->|Phase 4: LOAD| E[(SQLite DWH<br/>267k lignes)]
 
     style A fill:#e74c3c
     style B fill:#f39c12
     style C fill:#3498db
-    style D fill:#27ae60
-
-    C -->|clean_geolocation| C1[Dédup 1M → 19K]
-    C -->|aggregate_payments| C2[SUM + MODE par order]
-    C -->|latest_review| C3[Garder plus récent]
-    C -->|surrogate_keys| C4[UUID → INTEGER]
-    C -->|delivery_metrics| C5[Calculs temporels]
+    style D fill:#9b59b6
+    style E fill:#27ae60
 """).classes('w-full')
 
-    # ── EXTRACT ──
-    ui.label("1. Extract : Chargement des CSV").classes('text-2xl font-bold mb-4 mt-8')
+    # ── PHASE 1: EXTRACT ──
+    ui.label("Phase 1 : EXTRACT — load_all_raw()").classes('text-2xl font-bold mb-4 mt-8')
     ui.markdown("""
-Lecture des **9 fichiers CSV** sources avec Pandas (1.5M lignes brutes).
-""").classes('text-gray-300 mb-2')
+**Fichier** : `src/etl/extract.py`
+
+Chargement des **9 fichiers CSV** bruts dans un dictionnaire de DataFrames Pandas.
+""").classes('text-gray-300 mb-4')
 
     ui.label("🐍 Python").classes('text-sm font-semibold mb-2')
-    with ui.card().classes('w-full bg-gray-900 p-4 mb-8'):
-        ui.code("""orders_df = pd.read_csv("olist_orders_dataset.csv")      # 99 441 lignes
-items_df = pd.read_csv("olist_order_items_dataset.csv")  # 112 650 lignes
-# ... 7 autres CSV""", language='python').classes('text-sm')
+    with ui.card().classes('w-full bg-gray-900 p-4 mb-4'):
+        ui.code("""def load_all_raw() -> dict[str, pd.DataFrame]:
+    dfs = {}
+    for name in CSV_FILES:  # 9 datasets
+        dfs[name] = pd.read_csv(RAW_DIR / CSV_FILES[name])
+    return dfs""", language='python').classes('text-sm')
 
-    # ── TRANSFORM ──
-    ui.label("2. Transform : 5 transformations clés").classes('text-2xl font-bold mb-4 mt-8')
+    ui.markdown("""
+**Résultat** : 1 550 871 lignes brutes chargées en mémoire (9 DataFrames).
+""").classes('text-gray-300 mb-8')
 
-    # Transformation 1 : clean_geolocation (détaillée)
+    # ── PHASE 2: TRANSFORM ──
+    ui.label("Phase 2 : TRANSFORM — clean_all()").classes('text-2xl font-bold mb-4 mt-8')
+    ui.markdown("""
+**Fichier** : `src/etl/transform.py`
+
+Nettoyage et normalisation de chaque dataset via **9 fonctions de nettoyage** :
+- `clean_customers()`, `clean_geolocation()`, `clean_orders()`, `clean_order_items()`
+- `clean_order_payments()`, `clean_order_reviews()`, `clean_products()`, `clean_sellers()`
+- `clean_category_translation()`
+
+**Opérations communes** : déduplication, parsing dates, normalisation texte, validation métier.
+""").classes('text-gray-300 mb-6')
+
+    # Focus sur clean_geolocation (la plus impactante)
     with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
-        ui.label("🔹 clean_geolocation : Dédoublonner codes postaux").classes('text-xl font-bold mb-3')
+        ui.label("🔹 Focus : clean_geolocation()").classes('text-xl font-bold mb-3')
         ui.markdown("""
-**Problème** : 1M lignes pour 19K codes postaux uniques (53 entrées/zip en moyenne)
-**Solution** : Médiane lat/lng par zip_code_prefix (robuste aux outliers)
-**Résultat** : 1 000 163 → **19 015 lignes**, précision ~2km
+**Problème** : 1 000 163 lignes pour seulement 19K codes postaux uniques (53 entrées/zip en moyenne)
+
+**Solution** : Déduplication par `zip_code_prefix` avec médiane lat/lng (robuste aux outliers)
+
+**Résultat** : 1M → **19 015 lignes** (réduction 98%), précision ~2km
 """).classes('text-gray-300 mb-4')
 
         ui.label("🐍 Python").classes('text-sm font-semibold mb-2')
         with ui.card().classes('w-full bg-gray-900 p-4'):
-            ui.code("""def _safe_mode(x):
-    '''Mode sécurisé évitant IndexError sur séries vides.'''
-    mode = x.mode()
-    return mode.iloc[0] if not mode.empty else (x.iloc[0] if len(x) > 0 else None)
+            ui.code("""def clean_geolocation(df):
+    agg = df.groupby('geolocation_zip_code_prefix').agg(
+        geolocation_lat=('geolocation_lat', 'median'),
+        geolocation_lng=('geolocation_lng', 'median'),
+        geolocation_city=('geolocation_city', safe_mode),
+        geolocation_state=('geolocation_state', safe_mode),
+    ).reset_index()
+    return agg  # 1M → 19K lignes""", language='python').classes('text-xs')
 
-def clean_geolocation(df):
-    return df.groupby('zip_code_prefix', as_index=False).agg({
-        'lat': 'median',
-        'lng': 'median',
-        'city': _safe_mode,
-        'state': _safe_mode
-    })""", language='python').classes('text-xs')
-
-    # Transformation 2 : aggregate_payments
-    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
-        ui.label("🔹 aggregate_payments : Fusionner paiements multiples").classes('text-xl font-bold mb-3')
-        ui.markdown("""
-**Problème** : 103 886 lignes pour 99 441 commandes (97% mono-paiement)
-**Solution** : SUM(payment_value), MODE(payment_type) par order_id
-**Résultat** : order_payment_total = montant total, payment_type = type dominant
-""").classes('text-gray-300')
-
-    # Transformation 3 : latest_review_per_order
-    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
-        ui.label("🔹 latest_review_per_order : Résoudre reviews multiples").classes('text-xl font-bold mb-3')
-        ui.markdown("""
-**Problème** : 547 commandes ont plusieurs reviews (0.5%)
-**Solution** : Garder la review la plus récente (MAX(review_creation_date))
-**Résultat** : table reviews dédupliquée (99 224 lignes → 98 666 `order_id` avec review)
-""").classes('text-gray-300')
-
-    # Transformation 4 : create_surrogate_keys
-    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
-        ui.label("🔹 create_surrogate_keys : Optimiser clés étrangères").classes('text-xl font-bold mb-3')
-        ui.markdown("""
-**Problème** : UUID 32 char (32 bytes) → INTEGER (4 bytes) = **8× moins d'espace**
-**Solution** : AUTOINCREMENT sur customer_key, seller_key, product_key
-**Résultat** : Index plus compacts, jointures plus efficaces et modèle homogène
-""").classes('text-gray-300')
-
-    # Transformation 5 : calculate_delivery_metrics
-    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-8'):
-        ui.label("🔹 calculate_delivery_metrics : Feature engineering temporel").classes('text-xl font-bold mb-3')
-        ui.markdown("""
-**Métriques calculées** :
-- `delivery_days` = delivered_date - purchase_date
-- `estimated_days` = estimated_delivery_date - purchase_date
-- `delivery_delta_days` = delivery_days - estimated_days (positif = retard)
-
-**Résultat** : Métriques précalculées pour analyses logistiques
-""").classes('text-gray-300')
-
-    # ── LOAD ──
-    ui.label("3. Load : Insertion dans SQLite avec 8 index stratégiques").classes('text-2xl font-bold mb-4 mt-8')
     ui.markdown("""
-Création du **schéma en étoile** (1 fait + 5 dimensions) et des **index critiques** pour analyses interactives.
-""").classes('text-gray-300 mb-4')
+**Résultat global Phase 2** : 9 DataFrames nettoyés prêts pour la modélisation dimensionnelle.
+""").classes('text-gray-300 mb-8')
 
-    ui.label("💻 SQL").classes('text-sm font-semibold mb-2')
-    with ui.card().classes('w-full bg-gray-900 p-4 mb-6'):
-        ui.code("""# Schéma en étoile : 1 fait + 5 dimensions
-fact_orders.to_sql('fact_orders', conn, index=False)
-dim_customers.to_sql('dim_customers', conn, index=False)
-# ... 4 autres dimensions
+    # ── PHASE 3: BUILD DIMENSIONS ──
+    ui.label("Phase 3 : BUILD — Modélisation dimensionnelle").classes('text-2xl font-bold mb-4 mt-8')
+    ui.markdown("""
+**Fichier** : `src/etl/load.py`
 
-# Index critiques
-conn.execute("CREATE INDEX idx_fact_order_id ON fact_orders(order_id)")
-conn.execute("CREATE INDEX idx_fact_date_key ON fact_orders(date_key)")
-conn.execute("CREATE INDEX idx_fact_customer_key ON fact_orders(customer_key)")
-conn.execute("CREATE INDEX idx_fact_seller_key ON fact_orders(seller_key)")
-conn.execute("CREATE INDEX idx_fact_product_key ON fact_orders(product_key)")
-conn.execute("CREATE INDEX idx_fact_order_status ON fact_orders(order_status)")
-conn.execute("CREATE INDEX idx_fact_customer_geo ON fact_orders(customer_geo_key)")
-conn.execute("CREATE INDEX idx_fact_seller_geo ON fact_orders(seller_geo_key)")""", language='python').classes('text-sm')
+Construction des **5 dimensions** + **1 table de faits** avec feature engineering avancé.
+""").classes('text-gray-300 mb-6')
+
+    # Étape 3.1 : Dimensions avec clés surrogate
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("🔹 Étape 1 : Construire les 5 dimensions").classes('text-xl font-bold mb-3')
+        ui.markdown("""
+**Fonctions** : `build_dim_dates()`, `build_dim_geolocation()`, `build_dim_customers()`, `build_dim_sellers()`, `build_dim_products()`
+
+**Clés surrogate** : Chaque dimension reçoit une clé `INTEGER` auto-incrémentée (1, 2, 3...) via `_add_surrogate_key()`
+- `customer_key`, `seller_key`, `product_key`, `geo_key`, `date_key`
+- **Impact** : 8× plus compact que UUID (4 bytes vs 32), jointures ultra-rapides
+""").classes('text-gray-300')
+
+    # Étape 3.2 : Table de faits avec 4 transformations
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("🔹 Étape 2 : build_fact_orders() — 4 transformations clés").classes('text-xl font-bold mb-3')
+
+        ui.markdown("""
+**1. Agrégation paiements** (lignes 179-182)
+- **Problème** : 103 886 lignes paiements pour 99 441 commandes
+- **Solution** : `groupby('order_id').agg(order_payment_total=sum, payment_type=mode)`
+- **Résultat** : 1 ligne par commande avec montant total + type dominant
+
+**2. Sélection review plus récent** (lignes 185-189)
+- **Problème** : 547 commandes avec reviews multiples (0.5%)
+- **Solution** : `sort_values('review_creation_date').drop_duplicates('order_id', keep='first')`
+- **Résultat** : 1 review par commande (la plus récente)
+
+**3. Résolution clés surrogate** (lignes 196-205)
+- **Méthode** : Mapping `customer_id → customer_key` via lookup dict
+- **Résultat** : Toutes les FK en INTEGER, plus de UUID dans la fact
+
+**4. Métriques de livraison** (lignes 221-229)
+- **Calculs** : `delivery_days`, `estimated_days`, `delivery_delta_days`
+- **Résultat** : KPIs temporels précalculés pour analyses logistiques
+""").classes('text-gray-300')
+
+    ui.markdown("""
+**Résultat Phase 3** : 6 tables prêtes pour le chargement (267 867 lignes au total).
+""").classes('text-gray-300 mb-8')
+
+    # ── PHASE 4: LOAD ──
+    ui.label("Phase 4 : LOAD — load_to_sqlite()").classes('text-2xl font-bold mb-4 mt-8')
+    ui.markdown("""
+**Fichier** : `src/etl/load.py` (lignes 246-309)
+
+Chargement atomique dans SQLite avec transaction garantie via fichier temporaire.
+""").classes('text-gray-300 mb-6')
+
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("🔹 Étape 1 : Création du schéma").classes('text-xl font-bold mb-3')
+        ui.markdown("""
+**Script DDL** : `sql/create_star_schema.sql`
+- CREATE TABLE pour les 6 tables (5 dims + 1 fact)
+- Définition des FK (FOREIGN KEY vers dimensions)
+- Création de **8 index stratégiques** sur fact_orders
+""").classes('text-gray-300')
+
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("🔹 Étape 2 : Insertion des données").classes('text-xl font-bold mb-3')
+        ui.label("🐍 Python").classes('text-sm font-semibold mb-2')
+        with ui.card().classes('w-full bg-gray-900 p-4 mb-4'):
+            ui.code("""# Chargement par batch de 5000 lignes
+for name, df in tables:
+    df.to_sql(name, conn, if_exists='append',
+              index=False, chunksize=5000)""", language='python').classes('text-sm')
+        ui.markdown("""
+**Ordre** : dim_dates → dim_geolocation → dim_customers → dim_sellers → dim_products → fact_orders
+""").classes('text-gray-300')
+
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("🔹 Étape 3 : Création des vues analytiques").classes('text-xl font-bold mb-3')
+        ui.markdown("""
+**Script** : `sql/views.sql`
+- `v_monthly_sales` : Ventes mensuelles agrégées
+- `v_customer_cohorts` : Cohortes clients
+- `v_orders_enriched` : Fait dénormalisé avec toutes dimensions
+""").classes('text-gray-300')
 
     # Encadré de conclusion
     with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4 rounded mt-8'):
         ui.markdown("""
-➡️ **À retenir** : Le pipeline ETL transforme 1.5M lignes brutes en 268k lignes modélisées via 5 transformations clés : déduplication geolocation (1M→19k), agrégation paiements, résolution reviews multiples, clés surrogate et métriques de livraison.
+➡️ **À retenir** : Le pipeline suit 4 phases (`src/etl/pipeline.py`) : **EXTRACT** (9 CSV → DataFrames), **TRANSFORM** (9 cleaners dont geolocation 1M→19k), **BUILD** (5 dimensions + 1 fait avec 4 feature engineering), **LOAD** (SQLite avec 8 index + 3 vues). Résultat : 1.5M lignes brutes → 268k lignes modélisées.
 """).classes('text-gray-300')
 
 

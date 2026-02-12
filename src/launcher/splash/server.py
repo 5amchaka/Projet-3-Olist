@@ -28,9 +28,10 @@ class SplashServer:
     Serveur FastAPI qui diffuse les événements du launcher via WebSocket.
     """
 
-    def __init__(self, port: int = 8079, host: str = "127.0.0.1"):
+    def __init__(self, port: int = 8079, host: str = "127.0.0.1", theme: str = "matrix"):
         self.port = port
         self.host = host
+        self.theme = theme
         self.active_connections: Set[WebSocket] = set()
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task | None = None
@@ -63,7 +64,9 @@ class SplashServer:
         @app.get("/", response_class=HTMLResponse)
         async def root():
             """Serve le template HTML."""
-            html_path = self.templates_dir / "index.html"
+            # html_path = self.templates_dir / "index.html"
+            template_name = f"index-{self.theme}.html" if self.theme != "matrix" else "index.html"
+            html_path = self.templates_dir / template_name
             if html_path.exists():
                 return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
             else:
@@ -79,7 +82,9 @@ class SplashServer:
 
         # Monter les fichiers statiques
         if self.static_dir.exists():
-            app.mount("/static", StaticFiles(directory=str(self.static_dir)), name="static")
+            app.mount(
+                "/static", StaticFiles(directory=str(self.static_dir)), name="static"
+            )
 
         return app
 

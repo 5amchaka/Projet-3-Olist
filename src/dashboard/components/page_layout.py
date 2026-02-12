@@ -35,6 +35,13 @@ def layout(current_path: str = "/") -> ui.left_drawer:
                 icon="slideshow",
                 on_click=lambda: ui.navigate.to("/presentation"),
             ).props("flat color=white")
+            ui.button(
+                "Cours",
+                icon="school",
+                on_click=lambda: ui.navigate.to(
+                    "/presentation/module_1_fundamentals/0"
+                ),
+            ).props("flat color=white")
 
     # `value=True` evite la detection JS "auto" du drawer (value=None) qui peut
     # timeout dans certains environnements headless/SSH.

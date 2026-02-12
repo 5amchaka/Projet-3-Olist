@@ -26,17 +26,30 @@ class KaggleDownloader:
     def __init__(self, ui: "UIManager"):
         self.ui = ui
 
+    def _ensure_kaggle_credentials(self) -> None:
+        """Injecter des credentials par défaut si aucune n'est configurée.
+
+        Le dataset Olist est public, donc n'importe quelles credentials
+        fonctionnent. On évite ainsi de forcer l'utilisateur à créer
+        un compte Kaggle.
+        """
+        if not os.getenv("KAGGLE_USERNAME"):
+            os.environ["KAGGLE_USERNAME"] = "anonymous"
+        if not os.getenv("KAGGLE_KEY"):
+            os.environ["KAGGLE_KEY"] = "00000000000000000000000000000000"
+
     def download_all(self) -> None:
         """Télécharger le dataset complet depuis Kaggle."""
-        # Créer le répertoire RAW_DIR s'il n'existe pas
         RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-        self.ui.info(f"Downloading {self.DATASET_SLUG}...")
+        self.ui.info(f"Downloading {self.DATASET_SLUG} (public dataset)...")
 
-        # Trouver la commande kaggle dans le venv ou dans le PATH
+        # Credentials par défaut si absentes (dataset public)
+        self._ensure_kaggle_credentials()
+
+        # Trouver la commande kaggle
         kaggle_cmd = shutil.which("kaggle")
         if not kaggle_cmd:
-            # Si pas dans PATH, essayer dans le venv
             venv_bin = Path(sys.executable).parent
             kaggle_cmd = str(venv_bin / "kaggle")
             if not Path(kaggle_cmd).exists():
@@ -45,7 +58,6 @@ class KaggleDownloader:
                 )
 
         try:
-            # Utiliser la CLI Kaggle pour télécharger
             result = subprocess.run(
                 [
                     kaggle_cmd,

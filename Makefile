@@ -43,22 +43,22 @@ verify:
 	bash scripts/verify_csv_analysis.sh
 
 launch:
-	uv run python launch.py
+	uv run python launch.py --theme simplon
 
 launch-force:
-	uv run python launch.py --force
+	uv run python launch.py --theme simplon --force
 
 launch-quick:
-	uv run python launch.py --skip-download --skip-etl
+	uv run python launch.py --theme simplon --skip-download --skip-etl
 
 launch-with-tests:
-	uv run python launch.py --run-tests
+	uv run python launch.py --theme simplon --run-tests
 
 launch-with-all-tests:
-	uv run python launch.py --run-all-tests
+	uv run python launch.py --theme simplon --run-all-tests
 
 launch-with-verify:
-	uv run python launch.py --verify-csv
+	uv run python launch.py --theme simplon --verify-csv
 
 health:
 	uv run python launch.py --health-check-only

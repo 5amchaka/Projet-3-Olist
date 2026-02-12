@@ -53,6 +53,12 @@ from src.launcher.ui import UIManager
     help="Disable WebSocket splash screen (use CLI mode)",
 )
 @click.option(
+    "--theme",
+    type=click.Choice(["matrix", "simplon"], case_sensitive=False),
+    default="matrix",
+    help="Splash screen theme (matrix or simplon)",
+)
+@click.option(
     "--run-tests",
     is_flag=True,
     help="Run unit tests before launching dashboard",
@@ -81,6 +87,7 @@ def main(
     port: int,
     no_browser: bool,
     no_splash: bool,
+    theme: str,
     run_tests: bool,
     run_all_tests: bool,
     verify_csv: bool,
@@ -158,6 +165,7 @@ def main(
         port=port,
         no_browser=no_browser,
         use_splash=use_splash,
+        splash_theme=theme,
         run_tests=run_tests,
         run_all_tests=run_all_tests,
         verify_csv=verify_csv,

@@ -1,4 +1,4 @@
-"""Gestion de la configuration et validation des credentials Kaggle."""
+"""Gestion de la configuration du launcher."""
 
 import os
 from pathlib import Path
@@ -21,66 +21,17 @@ class ConfigManager:
         self.ui = ui
         self.project_root = project_root
         self.env_file = project_root / ".env"
-        self.env_example = project_root / ".env.example"
 
-    def ensure_env_file(self) -> None:
-        """S'assurer que le fichier .env existe et est valide."""
+    def load_env(self) -> None:
+        """Charger le fichier .env s'il existe."""
         if self.env_file.exists():
-            self.ui.success(".env file found")
             load_dotenv(self.env_file)
-            return
-
-        # Fichier .env absent
-        self.ui.warning(".env file not found")
-
-        # Demander confirmation interactive
-        response = input("Create .env file now? [Y/n]: ").strip().lower()
-        if response in ["n", "no"]:
-            raise ConfigurationError(".env file is required to proceed")
-
-        self._create_env_interactively()
-        self.ui.success(".env created")
-
-    def _create_env_interactively(self) -> None:
-        """Créer le fichier .env de manière interactive."""
-        print("\nKaggle API Credentials:")
-        print("Get them from: https://www.kaggle.com/settings/account\n")
-
-        username = input("KAGGLE_USERNAME: ").strip()
-        api_key = input("KAGGLE_KEY: ").strip()
-
-        if not username or not api_key:
-            raise ConfigurationError("Kaggle credentials cannot be empty")
-
-        # Créer le fichier .env
-        env_content = f"""# Kaggle API credentials (required)
-KAGGLE_USERNAME={username}
-KAGGLE_KEY={api_key}
-
-# Dashboard configuration (optional)
-DASHBOARD_PORT=8080
-DASHBOARD_SHOW_BROWSER=1
-"""
-        self.env_file.write_text(env_content)
-
-        # Charger immédiatement
-        load_dotenv(self.env_file)
-
-    def validate_kaggle_credentials(self) -> None:
-        """Valider que les credentials Kaggle sont présents et valides."""
-        username = os.getenv("KAGGLE_USERNAME")
-        api_key = os.getenv("KAGGLE_KEY")
-
-        if not username or not api_key:
-            raise ConfigurationError(
-                "KAGGLE_USERNAME and KAGGLE_KEY must be set in .env file"
-            )
-
-        self.ui.success(f"Kaggle credentials valid (user: {username})")
+            self.ui.success(".env file loaded")
+        else:
+            self.ui.info("No .env file (optional)")
 
     def validate_permissions(self) -> None:
         """Vérifier les permissions d'écriture dans les répertoires nécessaires."""
-        # Vérifier que PROJECT_ROOT est accessible en écriture
         if not os.access(self.project_root, os.W_OK):
             raise ConfigurationError(f"No write permission in {self.project_root}")
 

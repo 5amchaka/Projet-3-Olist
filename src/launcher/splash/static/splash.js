@@ -193,7 +193,7 @@ class SplashClient {
      * Affiche l'état de succès et redirige vers le dashboard
      */
     showSuccess(data) {
-        const { url, redirect_delay_ms = 2000 } = data;
+        const { url, redirect_delay_ms = 3000 } = data;
 
         // Afficher la success box
         this.elements.successBox.classList.remove('hidden');
@@ -202,6 +202,17 @@ class SplashClient {
         // Mettre la barre de progression à 100%
         this.currentPhase = this.totalPhases;
         this.updateProgress();
+
+        // Configurer les boutons d'action
+        const baseUrl = url.replace(/\/presentation\/?$/, '');
+        const btnPresentation = document.getElementById('btn-presentation');
+        const btnModule = document.getElementById('btn-module');
+        if (btnPresentation) {
+            btnPresentation.href = `${baseUrl}/presentation`;
+        }
+        if (btnModule) {
+            btnModule.href = `${baseUrl}/presentation/module_1_fundamentals/0`;
+        }
 
         // Rediriger après le délai
         setTimeout(() => {

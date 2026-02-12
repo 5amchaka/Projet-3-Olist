@@ -31,6 +31,7 @@ class OlistOrchestrator:
         port: int = 8080,
         no_browser: bool = False,
         use_splash: bool = True,
+        splash_theme: str = "matrix",
         run_tests: bool = False,
         run_all_tests: bool = False,
         verify_csv: bool = False,
@@ -42,6 +43,7 @@ class OlistOrchestrator:
         self.port = port
         self.no_browser = no_browser
         self.use_splash = use_splash
+        self.splash_theme = splash_theme
         self.run_tests = run_tests
         self.run_all_tests = run_all_tests
         self.verify_csv = verify_csv
@@ -66,22 +68,11 @@ class OlistOrchestrator:
     async def run_full_launch_async(self) -> None:
         """Version async du lancement avec splash WebSocket."""
         try:
-            # PHASE 0 : Configuration interactive en CLI (AVANT le splash)
-            # Si .env n'existe pas, le créer maintenant de façon interactive
-            from pathlib import Path
-            if not Path(PROJECT_ROOT / ".env").exists():
-                print("\n" + "=" * 60)
-                print("⚙️  INITIAL CONFIGURATION (Interactive Mode)")
-                print("=" * 60)
-                self._phase_configuration()
-                print("✓ Configuration completed")
-                print("=" * 60 + "\n")
-
             # Démarrer le splash server
             from src.launcher.splash.server import SplashServer
             from src.launcher.splash.events import EventType
 
-            self.splash_server = SplashServer(port=8079)
+            self.splash_server = SplashServer(port=8079, theme=self.splash_theme)
             await self.splash_server.start()
 
             # Remplacer l'UI par le WebSocket adapter IMMÉDIATEMENT
@@ -177,16 +168,8 @@ class OlistOrchestrator:
 
     def _run_phases_sync(self) -> None:
         """Exécute les phases 1-5 (communes aux deux modes)."""
-        # Phase 1: Configuration & Validation (skip si déjà faite avant splash)
-        from pathlib import Path
-        if Path(PROJECT_ROOT / ".env").exists():
-            # .env existe déjà, juste valider
-            with self.ui.phase_context("Configuration & Validation"):
-                self.config_manager.validate_kaggle_credentials()
-                self.config_manager.validate_permissions()
-        else:
-            # .env n'existe pas encore (mode CLI), faire la config complète
-            self._phase_configuration()
+        # Phase 1: Configuration & Validation
+        self._phase_configuration()
 
         # Phase 2: Pre-flight Health Check
         self._phase_preflight_check()
@@ -255,8 +238,7 @@ class OlistOrchestrator:
     def _phase_configuration(self) -> None:
         """Phase 1: Configuration et validation."""
         with self.ui.phase_context("Configuration & Validation"):
-            self.config_manager.ensure_env_file()
-            self.config_manager.validate_kaggle_credentials()
+            self.config_manager.load_env()
             self.config_manager.validate_permissions()
 
     def _phase_preflight_check(self) -> None:
@@ -306,7 +288,7 @@ class OlistOrchestrator:
             if self.no_browser:
                 os.environ["DASHBOARD_SHOW_BROWSER"] = "0"
 
-            url = f"http://localhost:{self.port}"
+            url = f"http://localhost:{self.port}/presentation"
             self.ui.show_success_box(url)
 
             # Lancer le dashboard
@@ -341,7 +323,7 @@ class OlistOrchestrator:
             ready = await wait_for_dashboard_ready(self.port, timeout=30)
 
             if ready:
-                url = f"http://localhost:{self.port}"
+                url = f"http://localhost:{self.port}/presentation"
                 self.ui.info(f"Dashboard is ready at {url}")
 
                 # Afficher la success box (qui déclenche le redirect)

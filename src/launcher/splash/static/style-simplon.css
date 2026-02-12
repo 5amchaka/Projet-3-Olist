@@ -1,0 +1,345 @@
+/* ===== THEME SIMPLON — Direction Artistique conforme au logo ===== */
+
+/* Palette extraite du logo Simplon :
+   - Rouge primaire   : #E2001A (cercle du logo)
+   - Rouge sombre     : #B80015
+   - Rouge clair      : #FF3348 (glows / accents)
+   - Fond principal   : #0F0F14 (noir bleuté profond, pas noir pur)
+   - Texte clair      : #F0F0F5
+   - Gris UI          : #6B6B80
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap');
+
+:root {
+    /* — Simplon Brand — */
+    --simplon-red: #E2001A;
+    --simplon-red-dark: #B80015;
+    --simplon-red-light: #FF3348;
+    --simplon-red-glow: rgba(226, 0, 26, 0.4);
+
+    /* — Neutrals — */
+    --simplon-bg: #0F0F14;
+    --simplon-surface: #1A1A22;
+    --simplon-border: #2A2A35;
+    --simplon-text: #F0F0F5;
+    --simplon-text-muted: #6B6B80;
+
+    /* — Override base theme vars — */
+    --matrix-green: var(--simplon-red);
+    --matrix-green-dark: var(--simplon-red-dark);
+    --matrix-green-darker: var(--simplon-border);
+    --bg-black: var(--simplon-bg);
+    --bg-dark: var(--simplon-surface);
+    --text-white: var(--simplon-text);
+    --text-gray: var(--simplon-text-muted);
+    --success-green: #22C55E;
+    --error-red: #EF4444;
+    --warning-yellow: #EAB308;
+}
+
+/* ===== TYPOGRAPHY ===== */
+body {
+    font-family: 'Source Sans 3', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+    background: var(--simplon-bg) !important;
+    color: var(--simplon-text) !important;
+}
+
+/* ===== CANVAS ===== */
+#matrix-canvas {
+    opacity: 0.15 !important;
+}
+
+/* ===== SPLASH CONTAINER ===== */
+.splash-container {
+    background: rgba(15, 15, 20, 0.92) !important;
+    border: 1px solid var(--simplon-border) !important;
+    border-radius: 16px !important;
+    box-shadow:
+        0 0 0 1px rgba(226, 0, 26, 0.1),
+        0 25px 60px rgba(0, 0, 0, 0.5) !important;
+    backdrop-filter: blur(20px);
+}
+
+/* ===== LOGO + BANNER ===== */
+.banner {
+    border-bottom: 1px solid var(--simplon-border) !important;
+    padding-bottom: 1.25rem !important;
+    margin-bottom: 1.75rem !important;
+}
+
+.simplon-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.simplon-logo-icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.simplon-logo-text {
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    color: var(--simplon-text);
+    text-transform: lowercase;
+}
+
+.title {
+    font-family: 'Source Sans 3', sans-serif !important;
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 2px !important;
+    color: var(--simplon-red) !important;
+    text-shadow: none !important;
+    margin-bottom: 0 !important;
+}
+
+.subtitle {
+    font-size: 0.8rem !important;
+    color: var(--simplon-text-muted) !important;
+    letter-spacing: 1.5px !important;
+    text-transform: uppercase;
+}
+
+.version {
+    font-family: 'Source Sans 3', sans-serif !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+    padding: 0.25rem 0.7rem !important;
+    border: 1px solid var(--simplon-red) !important;
+    border-radius: 20px !important;
+    background: rgba(226, 0, 26, 0.1) !important;
+    color: var(--simplon-red) !important;
+}
+
+/* ===== PHASE DISPLAY ===== */
+.phase-display {
+    background: rgba(226, 0, 26, 0.05) !important;
+    border-left: 3px solid var(--simplon-red) !important;
+    border-radius: 0 8px 8px 0 !important;
+    padding: 0.85rem 1rem !important;
+}
+
+.phase-num {
+    font-family: 'Source Sans 3', sans-serif !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    color: var(--simplon-red) !important;
+    text-shadow: none !important;
+    letter-spacing: 1px;
+}
+
+.phase-separator {
+    color: var(--simplon-border) !important;
+}
+
+.phase-title {
+    font-size: 0.9rem !important;
+    font-weight: 400 !important;
+    color: var(--simplon-text) !important;
+}
+
+/* ===== PROGRESS BAR ===== */
+.progress-bar {
+    height: 6px !important;
+    background: linear-gradient(90deg, var(--simplon-red-dark), var(--simplon-red), var(--simplon-red-light)) !important;
+    border-radius: 3px !important;
+    box-shadow: 0 0 12px var(--simplon-red-glow) !important;
+}
+
+.progress-text {
+    font-family: 'Source Sans 3', sans-serif !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+}
+
+/* ===== LOGS ===== */
+.logs-header {
+    border-bottom: 1px solid var(--simplon-border) !important;
+}
+
+.logs-title {
+    font-family: 'Source Sans 3', sans-serif !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 1.5px !important;
+    color: var(--simplon-text-muted) !important;
+    text-shadow: none !important;
+}
+
+.logs-count {
+    font-family: 'Source Sans 3', sans-serif !important;
+    font-weight: 600 !important;
+}
+
+.log-output {
+    background: rgba(10, 10, 15, 0.6) !important;
+    border: 1px solid var(--simplon-border) !important;
+    border-radius: 8px !important;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace !important;
+    font-size: 0.8rem !important;
+    line-height: 1.6 !important;
+}
+
+.log-output::-webkit-scrollbar-thumb {
+    background: var(--simplon-border) !important;
+    border-radius: 4px !important;
+}
+
+.log-output::-webkit-scrollbar-thumb:hover {
+    background: var(--simplon-text-muted) !important;
+}
+
+/* Log entry colors */
+.log-entry {
+    border-radius: 2px !important;
+}
+
+.log-entry:hover {
+    background: rgba(226, 0, 26, 0.03) !important;
+}
+
+.log-entry.INFO {
+    border-left-color: var(--simplon-text-muted) !important;
+    color: var(--simplon-text) !important;
+}
+
+.log-entry.SUCCESS {
+    border-left-color: var(--success-green) !important;
+    color: var(--success-green) !important;
+}
+
+.log-entry.ERROR {
+    border-left-color: var(--error-red) !important;
+    color: var(--error-red) !important;
+}
+
+.log-entry.WARNING {
+    border-left-color: var(--warning-yellow) !important;
+    color: var(--warning-yellow) !important;
+}
+
+/* ===== SUCCESS BOX ===== */
+.success-box {
+    background: rgba(34, 197, 94, 0.08) !important;
+    border: 1px solid rgba(34, 197, 94, 0.3) !important;
+    border-radius: 12px !important;
+}
+
+.success-icon {
+    color: var(--success-green) !important;
+    text-shadow: 0 0 20px rgba(34, 197, 94, 0.5) !important;
+}
+
+.success-title {
+    font-family: 'Source Sans 3', sans-serif !important;
+    color: var(--success-green) !important;
+    text-shadow: none !important;
+}
+
+.success-spinner {
+    border-color: rgba(34, 197, 94, 0.2) !important;
+    border-top-color: var(--success-green) !important;
+}
+
+.dashboard-url {
+    color: var(--simplon-red) !important;
+}
+
+/* ===== SUCCESS ACTIONS (boutons post-launch) ===== */
+.success-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin: 1.5rem 0 0.5rem;
+    flex-wrap: wrap;
+}
+
+.action-btn {
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.65rem 1.5rem;
+    border-radius: 8px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    letter-spacing: 0.3px;
+}
+
+.action-btn-primary {
+    background: var(--simplon-red);
+    color: var(--simplon-text);
+    border: 1px solid var(--simplon-red);
+}
+
+.action-btn-primary:hover {
+    background: var(--simplon-red-dark);
+    box-shadow: 0 0 18px var(--simplon-red-glow);
+    transform: translateY(-1px);
+}
+
+.action-btn-secondary {
+    background: transparent;
+    color: var(--simplon-text);
+    border: 1px solid var(--simplon-border);
+}
+
+.action-btn-secondary:hover {
+    border-color: var(--simplon-red);
+    color: var(--simplon-red-light);
+    transform: translateY(-1px);
+}
+
+/* ===== ERROR BOX ===== */
+.error-box {
+    background: rgba(239, 68, 68, 0.08) !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+    border-radius: 12px !important;
+}
+
+.retry-btn {
+    font-family: 'Source Sans 3', sans-serif !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    background: var(--simplon-red) !important;
+    transition: all 0.2s ease !important;
+}
+
+.retry-btn:hover {
+    background: var(--simplon-red-dark) !important;
+    box-shadow: 0 0 20px var(--simplon-red-glow) !important;
+    transform: translateY(-1px);
+}
+
+/* ===== FOOTER ===== */
+.footer {
+    font-family: 'Source Sans 3', sans-serif !important;
+}
+
+.footer-separator {
+    color: var(--simplon-border) !important;
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.progress-bar {
+    background-size: 200% 100% !important;
+    animation: shimmer 2s linear infinite !important;
+}

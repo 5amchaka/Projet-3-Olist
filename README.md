@@ -77,6 +77,53 @@ make test
 make test-integration
 ```
 
+### Mode Cours SQL Interactif
+
+Le mode présentation a été transformé en un **cours SQL avancé dynamique** avec exercices interactifs.
+
+**Accès** : Bouton "Présentation" dans le header du dashboard ou `http://localhost:8080/presentation`
+
+#### Structure du cours
+
+**Introduction DWH** (6 slides, ~8 min) :
+1. Contexte Olist (dataset, problèmes CSV)
+2. Processus ETL (schémas Mermaid)
+3. Schéma en étoile (ERD interactif)
+4. Décisions architecturales (grain, index, vues)
+5. Avant/Après (Pandas vs SQL, 25x plus rapide)
+6. Justification business (ROI, métriques)
+
+**5 modules SQL** (15 leçons, ~160 min total) :
+
+| Module | Leçons | Concepts | Durée |
+|--------|--------|----------|-------|
+| **1. Fondamentaux** | 3 | SELECT, JOIN, GROUP BY | 25 min |
+| **2. Window Functions** | 3 | LAG, ROW_NUMBER, NTILE | 30 min |
+| **3. CTEs Avancées** | 3 | WITH, MATERIALIZED, chaînage | 35 min |
+| **4. Cas Complexes** | 3 | Self-join, scoring, cohortes | 40 min |
+| **5. Optimisation** | 3 | Index, EXPLAIN, performance | 30 min |
+
+#### Fonctionnalités interactives
+
+- **Éditeur SQL en ligne** : Exécution READ-ONLY avec validation automatique
+- **Annotations sur le code** : Hover tooltips + panels détails pour 30+ concepts SQL
+- **9 exercices progressifs** : Beginner → Advanced avec validateurs et feedback
+- **Liens exploration** : Chaque leçon connectée à une page du dashboard
+- **Visualisation EXPLAIN** : Animation step-by-step des plans d'exécution
+
+#### Navigation
+
+- **Sidebar** : Accordéons 5 modules avec highlight leçon courante
+- **Progress bar** : % complétion globale (X/15 leçons)
+- **Footer** : Boutons Précédent / Suivant avec edge cases
+
+#### Lancer le cours
+
+```bash
+make dashboard
+# Puis accéder à http://localhost:8080/presentation
+```
+
 ## Structure
 
 ```

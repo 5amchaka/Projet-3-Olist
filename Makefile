@@ -1,4 +1,4 @@
-.PHONY: help install download etl dashboard test test-integration test-all
+.PHONY: help install download etl dashboard test test-integration test-all verify
 
 help:
 	@echo "Targets disponibles:"
@@ -9,6 +9,7 @@ help:
 	@echo "  make test              # Tests hors integration"
 	@echo "  make test-integration  # Tests d'integrite CSV <-> DW"
 	@echo "  make test-all          # Tous les tests"
+	@echo "  make verify            # Verifier l'analyse CSV via csvkit"
 
 install:
 	uv venv && uv sync
@@ -30,3 +31,6 @@ test-integration:
 
 test-all:
 	uv run python -m pytest tests/ -v
+
+verify:
+	bash scripts/verify_csv_analysis.sh

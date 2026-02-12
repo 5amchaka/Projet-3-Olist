@@ -83,5 +83,89 @@ body {
     font-size: 0.9rem;
     line-height: 1.6;
 }
+
+/* ── Styles spécifiques au cours SQL ────────────────────────────────── */
+
+/* Éditeur SQL */
+.sql-editor-container {
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+/* Annotations hover */
+.sql-keyword-annotated {
+    color: #00C853;
+    text-decoration: underline dotted;
+    cursor: help;
+}
+
+.sql-keyword-annotated:hover {
+    background: rgba(0, 200, 83, 0.1);
+    transition: background 0.2s ease;
+}
+
+/* Panel détails concept */
+.concept-detail-panel {
+    background: #1E1E1E;
+    border-left: 3px solid #00E5FF;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+/* Transitions chapitres */
+.chapter-enter {
+    animation: slideInRight 0.4s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Code blocks gradient */
+pre.sql-demo-block {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* Sidebar navigation */
+.course-sidebar {
+    background: #1E1E1E;
+    border-right: 1px solid #333;
+    overflow-y: auto;
+}
+
+.course-sidebar .lesson-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.course-sidebar .lesson-item:hover {
+    background: rgba(0, 200, 83, 0.05);
+}
+
+.course-sidebar .lesson-item.active {
+    background: #00C853;
+    color: #000;
+    font-weight: 600;
+}
+
+/* Progress bar */
+.course-progress {
+    height: 4px;
+    background: #00C853;
+    transition: width 0.3s ease;
+}
 </style>
 """

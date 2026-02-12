@@ -50,7 +50,7 @@ Structure principale :
 - `src/dashboard/main.py` : point d'entree NiceGUI, enregistrement des pages, startup.
 - `src/dashboard/db.py` : connexion SQLite, chargement SQL, execution requetes.
 - `src/dashboard/theme.py` : palette couleurs, CSS, templates graphiques.
-- `src/dashboard/presentation.py` : parcours narratif en 6 etapes (`/presentation`).
+- `src/dashboard/presentation.py` : parcours narratif en 5 etapes (`/presentation`).
 - `src/dashboard/components/` : composants reutilisables (`sql_viewer`, `kpi_card`, `insight`, `benchmark`, `page_layout`).
 - `src/dashboard/pages/` : pages analytiques.
 

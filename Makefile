@@ -1,4 +1,4 @@
-.PHONY: help install download etl dashboard test test-integration test-all verify
+.PHONY: help install download etl dashboard launch launch-force launch-quick health test test-integration test-all verify
 
 help:
 	@echo "Targets disponibles:"
@@ -6,6 +6,10 @@ help:
 	@echo "  make download          # Telecharger et valider les 9 CSV Olist"
 	@echo "  make etl               # Executer le pipeline ETL complet"
 	@echo "  make dashboard         # Lancer le dashboard NiceGUI"
+	@echo "  make launch            # Launcher automatise (one-command)"
+	@echo "  make launch-force      # Launcher avec rebuild complet"
+	@echo "  make launch-quick      # Launcher en mode rapide (skip si possible)"
+	@echo "  make health            # Diagnostic systeme"
 	@echo "  make test              # Tests hors integration"
 	@echo "  make test-integration  # Tests d'integrite CSV <-> DW"
 	@echo "  make test-all          # Tous les tests"
@@ -34,3 +38,15 @@ test-all:
 
 verify:
 	bash scripts/verify_csv_analysis.sh
+
+launch:
+	uv run python launch.py
+
+launch-force:
+	uv run python launch.py --force
+
+launch-quick:
+	uv run python launch.py --skip-download --skip-etl
+
+health:
+	uv run python launch.py --health-check-only

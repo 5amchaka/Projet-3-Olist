@@ -25,6 +25,27 @@ def presentation_home() -> None:
     """Page d'accueil du cours : Introduction DWH (5 slides)."""
     ui.add_head_html(CUSTOM_CSS)
 
+    raw_slide = ui.context.client.request.query_params.get("slide", "0")
+    try:
+        initial_slide = int(raw_slide)
+    except (TypeError, ValueError):
+        initial_slide = 0
+
+    def _scroll_top():
+        ui.run_javascript('''
+            (() => {
+                const reset = () => {
+                    window.scrollTo(0, 0);
+                    document.querySelectorAll(".overflow-y-auto").forEach(el => el.scrollTop = 0);
+                };
+                reset();
+                requestAnimationFrame(reset);
+                setTimeout(reset, 80);
+            })();
+        ''')
+
+    ui.timer(0.05, _scroll_top, once=True)
+
     # Header
     with ui.header().classes("items-center justify-between px-4").style(
         f"background: {BG_DARK}; border-bottom: 1px solid #333"
@@ -41,8 +62,9 @@ def presentation_home() -> None:
         ).props("flat color=white")
 
     # Contenu : Introduction DWH
-    with ui.column().classes("w-full max-w-5xl mx-auto p-8"):
-        render_intro_carousel()
+    with ui.column().classes("w-full max-w-5xl mx-auto p-8 intro-home-shell"):
+        ui.element("div").props("id=intro-top").classes("w-full")
+        render_intro_carousel(initial_slide)
 
 
 @ui.page("/presentation/{module_id}/{lesson_index}")
@@ -55,6 +77,22 @@ def presentation_lesson(module_id: str, lesson_index: int) -> None:
         lesson_index: Index de la leçon dans le module (0-based)
     """
     ui.add_head_html(CUSTOM_CSS)
+
+    def _scroll_top():
+        ui.run_javascript('''
+            (() => {
+                const reset = () => {
+                    window.scrollTo(0, 0);
+                    document.querySelectorAll(".overflow-y-auto").forEach(el => el.scrollTop = 0);
+                };
+                reset();
+                requestAnimationFrame(reset);
+                setTimeout(reset, 120);
+            })();
+        ''')
+
+    ui.timer(0.05, _scroll_top, once=True)
+    ui.timer(0.35, _scroll_top, once=True)
 
     # Trouver module et leçon
     module = next((m for m in COURSE_MODULES if m.id == module_id), None)

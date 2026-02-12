@@ -15,7 +15,7 @@ import sqlite3
 from typing import Callable
 import re
 
-from src.db import Database
+from src.dashboard import db
 from src.dashboard.course.content import Exercise
 
 
@@ -26,7 +26,7 @@ class SQLEditor:
         self,
         initial_sql: str = "",
         exercise: Exercise | None = None,
-        db: Database | None = None,
+        
     ):
         """
         Initialise l'éditeur SQL.
@@ -38,7 +38,7 @@ class SQLEditor:
         """
         self.initial_sql = initial_sql
         self.exercise = exercise
-        self.db = db or Database()
+        # db module imported
 
         # UI components (initialisés dans render())
         self.editor = None
@@ -91,7 +91,7 @@ class SQLEditor:
 
         # Exécution
         try:
-            result_df = self.db.query(sql)
+            result_df = db.query(sql)
 
             # Affichage résultats
             self._show_results(result_df)
@@ -115,7 +115,7 @@ class SQLEditor:
 
         try:
             # Exécuter requête utilisateur
-            result_df = self.db.query(sql)
+            result_df = db.query(sql)
 
             # Appeler validateur
             success, feedback = self.exercise.validator(result_df)

@@ -14,11 +14,10 @@ from src.dashboard.course.content import COURSE_MODULES
 from src.dashboard.components.chapter_layout import ChapterLayout
 from src.dashboard.components.sql_editor import SQLEditor
 from src.dashboard.components.sql_annotator import SQLAnnotator
-from src.db import Database
+from src.dashboard import db
 
 
 # Instance database globale
-db = Database()
 
 
 @ui.page("/presentation")
@@ -174,7 +173,7 @@ def render_lesson_content(lesson):
             editor = SQLEditor(
                 initial_sql=lesson.exercise.starter_sql,
                 exercise=lesson.exercise,
-                db=db,
+                
             )
             editor.render()
 

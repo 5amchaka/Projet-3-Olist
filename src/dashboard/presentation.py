@@ -2,7 +2,7 @@
 Mode Cours SQL Avancé — Apprentissage interactif avec exercices.
 
 Routes :
-- /presentation : Introduction DWH (6 slides)
+- /presentation : Introduction DWH (5 slides)
 - /presentation/{module_id}/{lesson_index} : Leçon interactive
 """
 
@@ -22,7 +22,7 @@ from src.dashboard import db
 
 @ui.page("/presentation")
 def presentation_home() -> None:
-    """Page d'accueil du cours : Introduction DWH (6 slides)."""
+    """Page d'accueil du cours : Introduction DWH (5 slides)."""
     ui.add_head_html(CUSTOM_CSS)
 
     # Header
@@ -134,7 +134,7 @@ def render_lesson_content(lesson):
                     # Code SQL brut avec syntax highlighting
                     with ui.card().classes('w-full bg-gray-900 p-4'):
                         ui.html(
-                            f'<pre class="sql-demo-block font-mono text-sm" style="margin: 0; white-space: pre-wrap; color: #e0e0e0;">{sql_code}</pre>'
+                            f'<pre class="sql-demo-block font-mono text-sm" style="margin: 0; white-space: pre; color: #e0e0e0; overflow-x: auto; max-width: 100%;">{sql_code}</pre>'
                         )
 
                     # Liste des concepts annotables
@@ -154,7 +154,7 @@ def render_lesson_content(lesson):
                                     )
                                     with ui.card().classes('bg-gray-900 p-3'):
                                         ui.html(
-                                            f'<pre class="font-mono text-xs" style="margin: 0; white-space: pre-wrap;">{concept.example_sql}</pre>'
+                                            f'<pre class="font-mono text-xs" style="margin: 0; white-space: pre; overflow-x: auto; max-width: 100%;">{concept.example_sql}</pre>'
                                         )
 
             except FileNotFoundError:

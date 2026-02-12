@@ -307,7 +307,7 @@ SELECT * FROM monthly_sales""",
     ),
 
     "CASE WHEN": SQLConcept(
-        keyword="CASE",
+        keyword="CASE WHEN",
         name="CASE WHEN - Logique conditionnelle",
         short_desc="Applique une logique if/then/else dans SQL",
         detailed_desc="""## CASE WHEN : Conditions
@@ -378,7 +378,7 @@ FROM monthly_sales
 
     # === INDEX ===
     "CREATE INDEX": SQLConcept(
-        keyword="INDEX",
+        keyword="CREATE INDEX",
         name="CREATE INDEX - Optimisation",
         short_desc="Crée un index B-Tree pour accélérer les recherches",
         detailed_desc="""## CREATE INDEX : Indexation

@@ -1,5 +1,8 @@
 """Tests unitaires pour la structure du cours (content.py)."""
 
+from pathlib import Path
+import re
+
 import pytest
 from src.dashboard.course.content import (
     COURSE_MODULES,
@@ -90,3 +93,40 @@ def test_exploration_links_present():
         1 for m in COURSE_MODULES for l in m.lessons if l.exploration_link is not None
     )
     assert links_count >= 5, f"Au moins 5 liens exploration attendus (trouvé {links_count})"
+
+
+def test_demo_sql_files_exist():
+    """Chaque leçon doit référencer un fichier SQL dashboard existant."""
+    available_sql_files = {p.name for p in Path("sql/dashboard").glob("*.sql")}
+    missing = []
+
+    for module in COURSE_MODULES:
+        for lesson in module.lessons:
+            if lesson.demo_sql_file not in available_sql_files:
+                missing.append(f"{module.id}/{lesson.title}: {lesson.demo_sql_file}")
+
+    assert not missing, (
+        "Certains demo_sql_file n'existent pas dans sql/dashboard: "
+        + ", ".join(missing)
+    )
+
+
+def test_exploration_links_match_existing_routes():
+    """Tous les exploration_link du cours doivent pointer vers une route réelle."""
+    route_pattern = re.compile(r'@ui\.page\("([^"]+)"\)')
+    declared_routes: set[str] = set()
+
+    for page_file in Path("src/dashboard/pages").glob("*.py"):
+        declared_routes.update(route_pattern.findall(page_file.read_text(encoding="utf-8")))
+
+    missing_links = []
+    for module in COURSE_MODULES:
+        for lesson in module.lessons:
+            if lesson.exploration_link and lesson.exploration_link not in declared_routes:
+                missing_links.append(
+                    f"{module.id}/{lesson.title}: {lesson.exploration_link}"
+                )
+
+    assert not missing_links, (
+        "exploration_link sans route correspondante: " + ", ".join(missing_links)
+    )

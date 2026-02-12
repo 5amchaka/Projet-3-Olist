@@ -81,7 +81,7 @@ La clause `SELECT` définit quelles colonnes apparaîtront dans le résultat de 
 - ❌ Éviter `SELECT *` en production (performances + sécurité)
 - ✅ Utiliser des alias clairs avec `AS`
 """,
-        example_sql="SELECT customer_id, order_date, price FROM fact_orders",
+        example_sql="SELECT order_id, order_status, price FROM fact_orders",
         category="aggregate"
     ),
 
@@ -100,7 +100,7 @@ La clause `WHERE` s'applique **avant** l'agrégation. Elle filtre les lignes sou
 - `LIKE '%pattern%'`
 - `IS NULL`, `IS NOT NULL`
 """,
-        example_sql="WHERE order_status = 'delivered' AND order_date >= '2017-01-01'",
+        example_sql="WHERE order_status = 'delivered' AND date_key BETWEEN 20170101 AND 20171231",
         category="aggregate"
     ),
 
@@ -120,7 +120,7 @@ Les jointures relient les dimensions au fait dans un schéma en étoile.
 
 **Performance** : Toujours joindre sur des colonnes indexées (clés étrangères).
 """,
-        example_sql="""SELECT o.*, c.customer_state
+        example_sql="""SELECT o.order_id, c.state
 FROM fact_orders o
 INNER JOIN dim_customers c ON o.customer_key = c.customer_key""",
         category="join"
@@ -141,9 +141,10 @@ Agrège les lignes partageant les mêmes valeurs dans les colonnes de regroupeme
 - `SUM(col)`, `AVG(col)`
 - `MIN(col)`, `MAX(col)`
 """,
-        example_sql="""SELECT customer_state, COUNT(*) as nb_orders, SUM(price) as total_revenue
-FROM fact_orders
-GROUP BY customer_state""",
+        example_sql="""SELECT c.state, COUNT(DISTINCT o.order_id) as nb_orders, SUM(o.price) as total_revenue
+FROM fact_orders o
+INNER JOIN dim_customers c ON o.customer_key = c.customer_key
+GROUP BY c.state""",
         category="aggregate"
     ),
 
@@ -168,7 +169,7 @@ SELECT
 FROM monthly_sales
 ```
 """,
-        example_sql="LAG(revenue, 1) OVER (ORDER BY order_month)",
+        example_sql="LAG(revenue, 1) OVER (ORDER BY year, month)",
         category="window"
     ),
 
@@ -182,7 +183,7 @@ Symétrique de `LAG`, retourne la valeur `offset` lignes **après** la ligne cou
 
 **Usage** : Calculs forward-looking (ex: délai jusqu'au prochain achat).
 """,
-        example_sql="LEAD(order_date, 1) OVER (PARTITION BY customer_id ORDER BY order_date)",
+        example_sql="LEAD(date_key, 1) OVER (PARTITION BY customer_key ORDER BY date_key)",
         category="window"
     ),
 
@@ -286,7 +287,7 @@ Les CTEs créent des "tables temporaires" nommées utilisables dans la requête 
 **Exemple** : Calcul RFM en 3 étapes
 ```sql
 WITH rfm_raw AS (
-    SELECT customer_id, ... FROM fact_orders
+    SELECT customer_unique_id, ... FROM rfm_base
 ),
 rfm_scored AS (
     SELECT *, NTILE(5) OVER (...) as r_score FROM rfm_raw
@@ -298,9 +299,8 @@ SELECT * FROM rfm_final
 ```
 """,
         example_sql="""WITH monthly_sales AS (
-    SELECT STRFTIME('%Y-%m', order_date) as month, SUM(price) as revenue
-    FROM fact_orders
-    GROUP BY month
+    SELECT month_label as month, monthly_revenue as revenue
+    FROM v_monthly_sales
 )
 SELECT * FROM monthly_sales""",
         category="cte"
@@ -349,7 +349,7 @@ END as segment""",
 
 **Piège fréquent** : `COUNT(colonne)` ignore les NULL !
 """,
-        example_sql="SELECT COUNT(*) as total, COUNT(DISTINCT customer_id) as unique_customers FROM fact_orders",
+        example_sql="SELECT COUNT(*) as total_items, COUNT(DISTINCT order_id) as total_orders FROM fact_orders",
         category="aggregate"
     ),
 
@@ -396,11 +396,11 @@ Les index accélèrent les recherches sur les colonnes indexées (WHERE, JOIN).
 
 **Exemple** :
 ```sql
-CREATE INDEX idx_orders_date ON fact_orders(order_date);
-CREATE INDEX idx_orders_status ON fact_orders(order_status);
+CREATE INDEX idx_fact_date_key ON fact_orders(date_key);
+CREATE INDEX idx_fact_order_status ON fact_orders(order_status);
 ```
 """,
-        example_sql="CREATE INDEX idx_orders_date ON fact_orders(order_date);",
+        example_sql="CREATE INDEX idx_fact_date_key ON fact_orders(date_key);",
         category="index"
     ),
 
@@ -423,7 +423,7 @@ Affiche comment SQLite exécute la requête.
 3. Créer des index sur les colonnes filtrées/jointes
 4. Re-EXPLAIN pour vérifier l'amélioration
 """,
-        example_sql="EXPLAIN QUERY PLAN SELECT * FROM fact_orders WHERE order_date >= '2017-01-01';",
+        example_sql="EXPLAIN QUERY PLAN SELECT * FROM fact_orders WHERE date_key >= 20170101;",
         category="index"
     ),
 
@@ -438,9 +438,9 @@ SQLite n'a pas de type DATE natif. `JULIANDAY` convertit les dates en flottants 
 **Exemple** : Nombre de jours entre deux dates
 ```sql
 SELECT
-    customer_id,
+    customer_unique_id,
     JULIANDAY('now') - JULIANDAY(last_order_date) as days_since_last_order
-FROM customers
+FROM customer_last_orders
 ```
 
 **Alternative** : `STRFTIME` pour extraire composants (année, mois).
@@ -468,7 +468,7 @@ Par défaut, SQLite peut réévaluer une CTE à chaque référence (inline).
 **Exemple** :
 ```sql
 WITH customer_stats AS MATERIALIZED (
-    SELECT customer_id, SUM(price) as total FROM fact_orders GROUP BY customer_id
+    SELECT customer_key, SUM(price) as total FROM fact_orders GROUP BY customer_key
 )
 SELECT * FROM customer_stats WHERE total > 1000
 UNION ALL
@@ -529,7 +529,7 @@ L'ordre d'écriture (SELECT → WHERE → ORDER BY) diffère de l'ordre d'exécu
 - ✅ Indexer les colonnes filtrées dans WHERE pour de meilleures performances
 - ✅ Filtrer tôt pour réduire le volume de données
 
-Dans le Data Warehouse Olist, vous travaillerez principalement avec la table centrale `fact_orders` (112k lignes) qui contient toutes les transactions. Les filtres WHERE sur `order_date` et `order_status` sont particulièrement efficaces grâce aux index.
+Dans le Data Warehouse Olist, vous travaillerez principalement avec la table centrale `fact_orders` (112k lignes, grain article). Le filtrage temporel se fait via `date_key` (ou via `v_orders_enriched` qui expose `order_date`) et le filtrage de statut via `order_status`.
 """,
             concepts=[
                 CONCEPTS_INDEX["SELECT"],
@@ -550,13 +550,13 @@ Dans le Data Warehouse Olist, vous travaillerez principalement avec la table cen
 3. Trier par prix décroissant (`ORDER BY price DESC`)
 4. Le résultat doit contenir au moins 50 lignes
 
-**Table** : `fact_orders`
+**Source conseillée** : `v_orders_enriched` (inclut `order_date`, `order_status`, `price`)
 """,
                 starter_sql="""-- Filtrer les commandes livrées en 2017, tri prix DESC
 SELECT
     -- Vos colonnes ici
 
-FROM fact_orders
+FROM v_orders_enriched
 WHERE
     -- Vos conditions ici
 
@@ -566,7 +566,7 @@ ORDER BY -- Votre tri ici
     order_id,
     order_date,
     price
-FROM fact_orders
+FROM v_orders_enriched
 WHERE
     order_status = 'delivered'
     AND order_date >= '2017-01-01'
@@ -576,7 +576,7 @@ ORDER BY price DESC
                 validator=get_beginner_ex1_validator(),
                 hint="💡 Combinez plusieurs conditions avec AND. Utilisez >= et < pour les dates."
             ),
-            exploration_link="/vue-ensemble",
+            exploration_link="/",
         ),
 
         Lesson(
@@ -607,7 +607,7 @@ Les clés étrangères sont **toujours indexées** dans un bon DWH. Les jointure
                 CONCEPTS_INDEX["GROUP BY"],
                 CONCEPTS_INDEX["SUM"],
             ],
-            demo_sql_file="overview_kpis.sql",
+            demo_sql_file="overview_monthly_mini.sql",
             exercise=Exercise(
                 id="beginner_ex2_join",
                 title="Top catégories par chiffre d'affaires",
@@ -617,7 +617,7 @@ Les clés étrangères sont **toujours indexées** dans un bon DWH. Les jointure
 
 **Consignes** :
 1. Joindre `fact_orders` avec `dim_products` sur `product_key`
-2. Grouper par `category` (colonne dans dim_products)
+2. Construire une colonne `category` avec `COALESCE(category_name_en, category_name_pt, 'Unknown')`
 3. Calculer `SUM(price)` par catégorie
 4. Trier par CA décroissant et garder les 5 premiers (`LIMIT 5`)
 5. Colonnes attendues : `category`, `total_revenue`
@@ -638,16 +638,17 @@ FROM fact_orders o
 -- Votre tri et limite
 """,
                 solution_sql="""SELECT
-    p.category,
+    COALESCE(p.category_name_en, p.category_name_pt, 'Unknown') as category,
     SUM(o.price) as total_revenue
 FROM fact_orders o
 INNER JOIN dim_products p ON o.product_key = p.product_key
-GROUP BY p.category
+WHERE o.order_status = 'delivered'
+GROUP BY category
 ORDER BY total_revenue DESC
 LIMIT 5
 """,
                 validator=get_beginner_ex2_validator(),
-                hint="💡 Après JOIN, pensez à préfixer les colonnes (o.price, p.category) pour éviter les ambiguïtés."
+                hint="💡 Utilisez COALESCE(category_name_en, category_name_pt, 'Unknown') puis alias `category`."
             ),
             exploration_link="/ventes",
         ),
@@ -657,24 +658,26 @@ LIMIT 5
             theory="""## Agréger pour obtenir des insights
 
 Les agrégations transforment des lignes individuelles en **métriques métier** :
-- `COUNT(*)` : Nombre de transactions
+- `COUNT(*)` : Nombre de lignes de faits (articles)
 - `SUM(price)` : Chiffre d'affaires
-- `AVG(price)` : Panier moyen
-- `COUNT(DISTINCT customer_id)` : Nombre de clients uniques
+- `AVG(price)` : Panier moyen par article
+- `COUNT(DISTINCT order_id)` : Nombre de commandes uniques
 
 ### Règle d'or GROUP BY
 **Toute colonne dans SELECT qui n'est PAS dans une fonction d'agrégation DOIT être dans GROUP BY.**
 
 ```sql
 -- ✅ Correct
-SELECT customer_state, COUNT(*) as nb_orders
-FROM fact_orders
-GROUP BY customer_state
+SELECT c.state, COUNT(DISTINCT o.order_id) as nb_orders
+FROM fact_orders o
+INNER JOIN dim_customers c ON o.customer_key = c.customer_key
+GROUP BY c.state
 
--- ❌ Erreur : price n'est ni agrégée ni dans GROUP BY
-SELECT customer_state, price, COUNT(*)
-FROM fact_orders
-GROUP BY customer_state
+-- ❌ Erreur : o.price n'est ni agrégée ni dans GROUP BY
+SELECT c.state, o.price, COUNT(*)
+FROM fact_orders o
+INNER JOIN dim_customers c ON o.customer_key = c.customer_key
+GROUP BY c.state
 ```
 
 ### HAVING vs WHERE
@@ -683,11 +686,12 @@ GROUP BY customer_state
 
 ```sql
 -- Garder uniquement les états avec > 100 commandes
-SELECT customer_state, COUNT(*) as nb
-FROM fact_orders
-WHERE order_status = 'delivered'  -- Filtre avant
-GROUP BY customer_state
-HAVING COUNT(*) > 100  -- Filtre après
+SELECT c.state, COUNT(DISTINCT o.order_id) as nb
+FROM fact_orders o
+INNER JOIN dim_customers c ON o.customer_key = c.customer_key
+WHERE o.order_status = 'delivered'  -- Filtre avant
+GROUP BY c.state
+HAVING COUNT(DISTINCT o.order_id) > 100  -- Filtre après
 ```
 
 ### Vues SQL
@@ -709,10 +713,10 @@ Les vues sont des "requêtes sauvegardées" réutilisables. Dans le DWH Olist, `
 
 **Consignes** :
 1. Joindre `fact_orders` avec `dim_customers` sur `customer_key`
-2. Grouper par `customer_state` (colonne dans dim_customers)
+2. Grouper par `state` (colonne dans dim_customers)
 3. Calculer :
    - `SUM(price)` → alias `total_revenue`
-   - `COUNT(*)` → alias `nb_orders`
+   - `COUNT(DISTINCT order_id)` → alias `nb_orders`
 4. Trier par CA décroissant
 5. Colonnes attendues : `state`, `total_revenue`, `nb_orders`
 
@@ -730,16 +734,16 @@ FROM fact_orders o
 -- Votre tri
 """,
                 solution_sql="""SELECT
-    c.customer_state as state,
+    c.state as state,
     SUM(o.price) as total_revenue,
-    COUNT(*) as nb_orders
+    COUNT(DISTINCT o.order_id) as nb_orders
 FROM fact_orders o
 INNER JOIN dim_customers c ON o.customer_key = c.customer_key
-GROUP BY c.customer_state
+GROUP BY c.state
 ORDER BY total_revenue DESC
 """,
                 validator=get_beginner_ex3_validator(),
-                hint="💡 N'oubliez pas le GROUP BY sur customer_state, sinon vous aurez une seule ligne agrégée."
+                hint="💡 N'oubliez pas GROUP BY sur c.state et COUNT(DISTINCT o.order_id)."
             ),
             exploration_link="/clients",
         ),
@@ -806,9 +810,8 @@ Sans PARTITION BY, la window function s'applique sur **tout le dataset**.
 **Objectif** : Calculer la variation YoY (Year-over-Year) du chiffre d'affaires mensuel.
 
 **Consignes** :
-1. Partir de la vue `v_monthly_sales` (colonnes : `order_month`, `monthly_revenue`)
-2. Extraire année et mois : `CAST(SUBSTR(order_month, 1, 4) AS INTEGER) as year`, `CAST(SUBSTR(order_month, 6, 2) AS INTEGER) as month`
-3. Utiliser `LAG(monthly_revenue, 12) OVER (ORDER BY order_month)` pour obtenir le CA du même mois l'année précédente
+1. Partir de la vue `v_monthly_sales` (colonnes : `year`, `month`, `monthly_revenue`)
+2. Utiliser `LAG(monthly_revenue, 12) OVER (ORDER BY year, month)` pour obtenir le CA du même mois l'année précédente
 4. Calculer le % de croissance : `(revenue - revenue_previous_year) / NULLIF(revenue_previous_year, 0) * 100`
 5. Colonnes attendues : `year`, `month`, `revenue`, `revenue_previous_year`, `yoy_growth_pct`
 
@@ -816,26 +819,27 @@ Sans PARTITION BY, la window function s'applique sur **tout le dataset**.
 """,
                 starter_sql="""-- Croissance YoY mensuelle
 SELECT
-    -- Extraire année et mois
+    -- Colonnes temporelles year, month
     -- LAG pour CA année précédente
     -- Calcul % croissance
 
 FROM v_monthly_sales
-ORDER BY order_month
+ORDER BY year, month
 """,
                 solution_sql="""SELECT
-    CAST(SUBSTR(order_month, 1, 4) AS INTEGER) as year,
-    CAST(SUBSTR(order_month, 6, 2) AS INTEGER) as month,
+    year,
+    month,
     monthly_revenue as revenue,
-    LAG(monthly_revenue, 12) OVER (ORDER BY order_month) as revenue_previous_year,
-    (monthly_revenue - LAG(monthly_revenue, 12) OVER (ORDER BY order_month)) / NULLIF(LAG(monthly_revenue, 12) OVER (ORDER BY order_month), 0) * 100 as yoy_growth_pct
+    LAG(monthly_revenue, 12) OVER (ORDER BY year, month) as revenue_previous_year,
+    (monthly_revenue - LAG(monthly_revenue, 12) OVER (ORDER BY year, month))
+        / NULLIF(LAG(monthly_revenue, 12) OVER (ORDER BY year, month), 0) * 100 as yoy_growth_pct
 FROM v_monthly_sales
-ORDER BY order_month
+ORDER BY year, month
 """,
                 validator=get_intermediate_ex1_validator(),
                 hint="💡 LAG(col, 12) saute 12 mois en arrière. NULLIF évite la division par zéro."
             ),
-            exploration_link="/tendances",
+            exploration_link="/trends",
         ),
 
         Lesson(
@@ -887,8 +891,8 @@ Sans PARTITION BY → calcul global (ex: rang global sur tout le dataset).
 **Objectif** : Identifier les 3 meilleurs vendeurs par état (selon le CA).
 
 **Consignes** :
-1. CTE 1 : Agréger `fact_orders` + `dim_sellers` → CA par (seller_id, seller_state)
-2. CTE 2 : Ajouter `ROW_NUMBER() OVER (PARTITION BY seller_state ORDER BY revenue DESC) as rank_in_state`
+1. CTE 1 : Agréger `fact_orders` + `dim_sellers` → CA par (seller_id, state)
+2. CTE 2 : Ajouter `ROW_NUMBER() OVER (PARTITION BY state ORDER BY revenue DESC) as rank_in_state`
 3. Requête finale : Filtrer `rank_in_state <= 3`
 4. Colonnes attendues : `state`, `seller_id`, `revenue`, `rank_in_state`
 
@@ -903,18 +907,24 @@ ranked_sellers AS (
     -- Ajouter ROW_NUMBER avec PARTITION BY state
 
 )
-SELECT * FROM ranked_sellers
+SELECT
+    state,
+    seller_id,
+    revenue,
+    rank_in_state
+FROM ranked_sellers
 WHERE rank_in_state <= 3
 ORDER BY state, rank_in_state
 """,
                 solution_sql="""WITH seller_revenue AS (
     SELECT
+        s.state,
         s.seller_id,
-        s.seller_state as state,
         SUM(o.price) as revenue
     FROM fact_orders o
     INNER JOIN dim_sellers s ON o.seller_key = s.seller_key
-    GROUP BY s.seller_id, s.seller_state
+    WHERE o.order_status = 'delivered'
+    GROUP BY s.state, s.seller_id
 ),
 ranked_sellers AS (
     SELECT
@@ -922,7 +932,12 @@ ranked_sellers AS (
         ROW_NUMBER() OVER (PARTITION BY state ORDER BY revenue DESC) as rank_in_state
     FROM seller_revenue
 )
-SELECT * FROM ranked_sellers
+SELECT
+    state,
+    seller_id,
+    revenue,
+    rank_in_state
+FROM ranked_sellers
 WHERE rank_in_state <= 3
 ORDER BY state, rank_in_state
 """,
@@ -984,7 +999,7 @@ Le quintile 1 (top 20%) devrait représenter ~70-80% du CA si Pareto s'applique.
 **Objectif** : Répartir les clients en 5 quintiles selon leur montant total dépensé.
 
 **Consignes** :
-1. CTE : Agréger `fact_orders` par `customer_id` → `SUM(price) as total_spent`
+1. CTE : Joindre `fact_orders` + `dim_customers`, puis agréger par `customer_unique_id` (alias `customer_id`)
 2. Requête finale : Ajouter `NTILE(5) OVER (ORDER BY total_spent DESC) as quintile`
 3. Colonnes attendues : `customer_id`, `total_spent`, `quintile`
 4. Quintile 1 = top 20% (plus gros montants), quintile 5 = bottom 20%
@@ -1004,10 +1019,12 @@ ORDER BY total_spent DESC
 """,
                 solution_sql="""WITH customer_totals AS (
     SELECT
-        customer_id,
-        SUM(price) as total_spent
-    FROM fact_orders
-    GROUP BY customer_id
+        c.customer_unique_id as customer_id,
+        SUM(f.price) as total_spent
+    FROM fact_orders f
+    INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+    WHERE f.order_status = 'delivered'
+    GROUP BY c.customer_unique_id
 )
 SELECT
     customer_id,
@@ -1050,11 +1067,11 @@ Les CTEs (Common Table Expressions) sont des "tables temporaires" nommées défi
 ```sql
 WITH rfm_raw AS (
     -- Étape 1 : Calculer R, F, M par client
-    SELECT customer_id, recency, frequency, monetary FROM ...
+    SELECT customer_unique_id, recency, frequency, monetary FROM ...
 ),
 rfm_scored AS (
     -- Étape 2 : Convertir en scores 1-5 avec NTILE
-    SELECT *, NTILE(5) OVER (ORDER BY recency) as r_score FROM rfm_raw
+    SELECT *, NTILE(5) OVER (ORDER BY recency DESC) as r_score FROM rfm_raw
 ),
 rfm_segmented AS (
     -- Étape 3 : Classifier en segments métier
@@ -1084,7 +1101,7 @@ Chaque CTE est testable indépendamment : `SELECT * FROM rfm_raw LIMIT 10`.
 
 **Consignes** :
 1. CTE 1 (`total_revenue`) : Calculer le CA total global (`SELECT SUM(price) as total FROM fact_orders`)
-2. CTE 2 (`product_revenue`) : Agréger CA par `product_id`
+2. CTE 2 (`product_revenue`) : Joindre `dim_products` et agréger CA par `product_id`
 3. Requête finale :
    - Joindre les 2 CTEs (produit croisé, pas de clé)
    - Calculer `pct_of_total = (product_revenue / total_revenue) * 100`
@@ -1113,9 +1130,13 @@ LIMIT 10
     SELECT SUM(price) as total FROM fact_orders
 ),
 product_revenue AS (
-    SELECT product_id, SUM(price) as revenue
-    FROM fact_orders
-    GROUP BY product_id
+    SELECT
+        p.product_id,
+        SUM(f.price) as revenue
+    FROM fact_orders f
+    INNER JOIN dim_products p ON f.product_key = p.product_key
+    WHERE f.order_status = 'delivered'
+    GROUP BY p.product_id
 )
 SELECT
     product_id,
@@ -1144,8 +1165,8 @@ Trois types de sous-requêtes :
 ```sql
 -- ❌ LENT : Exécutée N fois (1 fois par client)
 SELECT
-    customer_id,
-    (SELECT AVG(price) FROM fact_orders o2 WHERE o2.customer_id = c.customer_id) as avg_order
+    c.customer_unique_id,
+    (SELECT AVG(f2.price) FROM fact_orders f2 WHERE f2.customer_key = c.customer_key) as avg_order
 FROM dim_customers c
 ```
 
@@ -1153,13 +1174,13 @@ FROM dim_customers c
 ```sql
 -- ✅ RAPIDE : Exécutée 1 seule fois
 WITH customer_avg AS MATERIALIZED (
-    SELECT customer_id, AVG(price) as avg_order
+    SELECT customer_key, AVG(price) as avg_order
     FROM fact_orders
-    GROUP BY customer_id
+    GROUP BY customer_key
 )
-SELECT c.customer_id, ca.avg_order
+SELECT c.customer_unique_id, ca.avg_order
 FROM dim_customers c
-LEFT JOIN customer_avg ca ON c.customer_id = ca.customer_id
+LEFT JOIN customer_avg ca ON c.customer_key = ca.customer_key
 ```
 
 ### Quand utiliser MATERIALIZED ?
@@ -1196,8 +1217,8 @@ SELECT JULIANDAY('2018-01-31') - JULIANDAY('2018-01-01')  -- = 30
 
 -- Récence client (jours depuis dernier achat)
 SELECT JULIANDAY('now') - JULIANDAY(MAX(order_date)) as recency_days
-FROM fact_orders
-WHERE customer_id = 'xxx'
+FROM v_orders_enriched
+WHERE customer_unique_id = 'xxx'
 ```
 
 ### Cohortes mensuelles
@@ -1224,8 +1245,8 @@ Le calcul de "mois écoulés" en SQLite nécessite de l'arithmétique sur des en
 **Objectif** : Calculer le chiffre d'affaires cumulé mois par mois.
 
 **Consignes** :
-1. Partir de `v_monthly_sales` (colonnes : `order_month`, `monthly_revenue`)
-2. Utiliser `SUM(monthly_revenue) OVER (ORDER BY order_month ROWS UNBOUNDED PRECEDING)` pour le cumul
+1. Partir de `v_monthly_sales` (colonnes : `year`, `month`, `month_label`, `monthly_revenue`)
+2. Utiliser `SUM(monthly_revenue) OVER (ORDER BY year, month ROWS UNBOUNDED PRECEDING)` pour le cumul
 3. Colonnes attendues : `month`, `monthly_revenue`, `cumulative_revenue`
 4. Le cumul doit être strictement croissant
 5. Dernier cumul = somme de tous les monthly_revenue
@@ -1234,24 +1255,24 @@ Le calcul de "mois écoulés" en SQLite nécessite de l'arithmétique sur des en
 """,
                 starter_sql="""-- Running total mensuel
 SELECT
-    order_month as month,
+    month_label as month,
     monthly_revenue,
     -- Votre SUM() OVER ici
 
 FROM v_monthly_sales
-ORDER BY order_month
+ORDER BY year, month
 """,
                 solution_sql="""SELECT
-    order_month as month,
+    month_label as month,
     monthly_revenue,
-    SUM(monthly_revenue) OVER (ORDER BY order_month ROWS UNBOUNDED PRECEDING) as cumulative_revenue
+    SUM(monthly_revenue) OVER (ORDER BY year, month ROWS UNBOUNDED PRECEDING) as cumulative_revenue
 FROM v_monthly_sales
-ORDER BY order_month
+ORDER BY year, month
 """,
                 validator=get_intermediate_ex3_validator(),
                 hint="💡 SUM() OVER avec ROWS UNBOUNDED PRECEDING crée un cumul depuis le début."
             ),
-            exploration_link="/cohortes",
+            exploration_link="/cohorts",
         ),
     ]
 )
@@ -1280,22 +1301,34 @@ Un **self-join** compare les lignes d'une table entre elles.
 ### Exemple : Taux de réachat
 ```sql
 WITH first_orders AS (
-    SELECT customer_id, MIN(order_date) as first_order_date
-    FROM fact_orders
-    GROUP BY customer_id
+    SELECT
+        c.customer_unique_id as customer_id,
+        MIN(f.date_key) as first_order_key
+    FROM fact_orders f
+    INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+    WHERE f.order_status = 'delivered'
+      AND f.date_key IS NOT NULL
+    GROUP BY c.customer_unique_id
 ),
 subsequent_orders AS (
-    SELECT DISTINCT o.customer_id
-    FROM fact_orders o
-    INNER JOIN first_orders f ON o.customer_id = f.customer_id
-    WHERE o.order_date > f.first_order_date
+    SELECT DISTINCT
+        c.customer_unique_id as customer_id
+    FROM fact_orders f
+    INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+    INNER JOIN first_orders fo ON c.customer_unique_id = fo.customer_id
+    WHERE f.order_status = 'delivered'
+      AND f.date_key > fo.first_order_key
 )
 SELECT
-    COUNT(DISTINCT f.customer_id) as total_customers,
-    COUNT(DISTINCT s.customer_id) as repeat_customers,
-    COUNT(DISTINCT s.customer_id) * 100.0 / COUNT(DISTINCT f.customer_id) as repeat_rate_pct
-FROM first_orders f
-LEFT JOIN subsequent_orders s ON f.customer_id = s.customer_id
+    COUNT(DISTINCT fo.customer_id) as total_customers,
+    COUNT(DISTINCT so.customer_id) as repeat_customers,
+    ROUND(
+        COUNT(DISTINCT so.customer_id) * 100.0
+        / NULLIF(COUNT(DISTINCT fo.customer_id), 0),
+        1
+    ) as repeat_rate_pct
+FROM first_orders fo
+LEFT JOIN subsequent_orders so ON fo.customer_id = so.customer_id
 ```
 
 ### Matrices de rétention
@@ -1320,35 +1353,40 @@ Nécessite un self-join entre "première commande" et "toutes les commandes" pou
 **Objectif** : Lister les clients qui ont passé au moins 2 commandes.
 
 **Consignes** :
-1. Méthode 1 (simple) : `GROUP BY customer_id HAVING COUNT(*) >= 2`
-2. Ou méthode 2 (window function) : `COUNT(*) OVER (PARTITION BY customer_id)`
-3. Colonnes attendues : `customer_id`, `nb_orders`
-4. Résultat attendu : Au moins 10 clients
+1. Joindre `fact_orders` et `dim_customers` pour obtenir `customer_unique_id`
+2. Agréger par client avec `COUNT(DISTINCT order_id)` (grain commande)
+3. Filtrer avec `HAVING COUNT(DISTINCT order_id) >= 2`
+4. Colonnes attendues : `customer_id`, `nb_orders`
+5. Résultat attendu : Au moins 10 clients
 
-**Note** : Les deux méthodes sont valides. La méthode 1 est plus simple ici.
+**Note** : Le grain de `fact_orders` est l'article de commande, pas la commande complète.
 """,
                 starter_sql="""-- Clients récurrents (2+ commandes)
 SELECT
-    customer_id,
+    c.customer_unique_id as customer_id,
     -- Compter les commandes
 
-FROM fact_orders
-GROUP BY customer_id
+FROM fact_orders f
+INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+WHERE f.order_status = 'delivered'
+GROUP BY c.customer_unique_id
 -- Filtrer >= 2
 ORDER BY nb_orders DESC
 """,
                 solution_sql="""SELECT
-    customer_id,
-    COUNT(*) as nb_orders
-FROM fact_orders
-GROUP BY customer_id
-HAVING COUNT(*) >= 2
+    c.customer_unique_id as customer_id,
+    COUNT(DISTINCT f.order_id) as nb_orders
+FROM fact_orders f
+INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+WHERE f.order_status = 'delivered'
+GROUP BY c.customer_unique_id
+HAVING COUNT(DISTINCT f.order_id) >= 2
 ORDER BY nb_orders DESC
 """,
                 validator=get_advanced_ex2_validator(),
-                hint="💡 HAVING filtre après GROUP BY. Utilisez COUNT(*) >= 2."
+                hint="💡 Utilisez COUNT(DISTINCT f.order_id) pour compter les commandes, puis HAVING >= 2."
             ),
-            exploration_link="/cohortes",
+            exploration_link="/cohorts",
         ),
 
         Lesson(
@@ -1367,27 +1405,34 @@ Un **score composite** agrège plusieurs KPIs en un indicateur unique.
 ```sql
 WITH seller_kpis AS (
     SELECT
-        seller_id,
-        SUM(price) as revenue,
-        COUNT(*) as volume,
-        AVG(review_score) as avg_rating,
-        AVG(delivery_days) as avg_delivery,
-        SUM(CASE WHEN late THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as late_pct
-    FROM ...
-    GROUP BY seller_id
+        s.seller_id,
+        SUM(f.price) as revenue,
+        COUNT(DISTINCT f.order_id) as volume,
+        AVG(f.review_score) as avg_rating,
+        AVG(f.delivery_days) as avg_delivery,
+        AVG(CASE WHEN f.delivery_delta_days <= 0 THEN 1.0 ELSE 0.0 END) * 100 as on_time_pct
+    FROM fact_orders f
+    INNER JOIN dim_sellers s ON f.seller_key = s.seller_key
+    WHERE f.order_status = 'delivered'
+    GROUP BY s.seller_id
 ),
 seller_scores AS (
     SELECT
-        *,
-        NTILE(5) OVER (ORDER BY revenue DESC) as revenue_score,
-        NTILE(5) OVER (ORDER BY volume DESC) as volume_score,
-        NTILE(5) OVER (ORDER BY avg_rating DESC) as rating_score,
-        NTILE(5) OVER (ORDER BY avg_delivery ASC) as delivery_score,
-        NTILE(5) OVER (ORDER BY late_pct ASC) as punctuality_score
+        seller_id,
+        revenue,
+        volume,
+        avg_rating,
+        avg_delivery,
+        on_time_pct,
+        NTILE(5) OVER (ORDER BY revenue ASC) as revenue_score,
+        NTILE(5) OVER (ORDER BY volume ASC) as volume_score,
+        NTILE(5) OVER (ORDER BY avg_rating ASC) as rating_score,
+        NTILE(5) OVER (ORDER BY avg_delivery DESC) as delivery_score,
+        NTILE(5) OVER (ORDER BY on_time_pct ASC) as punctuality_score
     FROM seller_kpis
 )
 SELECT
-    *,
+    seller_id,
     (revenue_score + volume_score + rating_score + delivery_score + punctuality_score) as total_score
 FROM seller_scores
 ORDER BY total_score DESC
@@ -1419,18 +1464,24 @@ Les analyses métier nécessitent souvent des **flags booléens** et des **class
 Un client est "nouveau" au mois M si c'est sa première commande.
 
 ```sql
-WITH customer_first_order AS (
-    SELECT customer_id, MIN(order_month) as first_month
-    FROM fact_orders
-    GROUP BY customer_id
+WITH order_months AS (
+    SELECT DISTINCT
+        c.customer_unique_id,
+        f.date_key / 100 as order_month,
+        vc.first_month
+    FROM fact_orders f
+    INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+    INNER JOIN v_customer_cohorts vc ON vc.customer_unique_id = c.customer_unique_id
+    WHERE f.order_status = 'delivered'
+      AND f.date_key IS NOT NULL
 )
 SELECT
-    o.order_month,
-    COUNT(DISTINCT CASE WHEN o.order_month = f.first_month THEN o.customer_id END) as new_customers,
-    COUNT(DISTINCT CASE WHEN o.order_month > f.first_month THEN o.customer_id END) as recurring_customers
-FROM fact_orders o
-LEFT JOIN customer_first_order f ON o.customer_id = f.customer_id
-GROUP BY o.order_month
+    (order_month / 100) || '-' || PRINTF('%02d', order_month % 100) as month_label,
+    COUNT(DISTINCT CASE WHEN order_month = first_month THEN customer_unique_id END) as new_customers,
+    COUNT(DISTINCT CASE WHEN order_month > first_month THEN customer_unique_id END) as recurring_customers
+FROM order_months
+GROUP BY order_month
+ORDER BY order_month
 ```
 
 ### Clients "at risk"
@@ -1438,9 +1489,14 @@ Clients inactifs depuis N jours :
 
 ```sql
 WITH last_orders AS (
-    SELECT customer_id, MAX(order_date) as last_order_date
-    FROM fact_orders
-    GROUP BY customer_id
+    SELECT
+        c.customer_unique_id as customer_id,
+        MAX(d.full_date) as last_order_date
+    FROM fact_orders f
+    INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+    INNER JOIN dim_dates d ON f.date_key = d.date_key
+    WHERE f.order_status = 'delivered'
+    GROUP BY c.customer_unique_id
 )
 SELECT
     customer_id,
@@ -1451,10 +1507,23 @@ WHERE JULIANDAY('now') - JULIANDAY(last_order_date) > 180  -- 6 mois
 
 ### MIN() OVER : Flag "première occurrence"
 ```sql
+WITH customer_orders AS (
+    SELECT DISTINCT
+        c.customer_unique_id as customer_id,
+        f.date_key / 100 as order_month
+    FROM fact_orders f
+    INNER JOIN dim_customers c ON f.customer_key = c.customer_key
+    WHERE f.order_status = 'delivered'
+      AND f.date_key IS NOT NULL
+)
 SELECT
-    *,
-    CASE WHEN order_month = MIN(order_month) OVER (PARTITION BY customer_id) THEN 1 ELSE 0 END as is_first_order
-FROM fact_orders
+    customer_id,
+    order_month,
+    CASE
+        WHEN order_month = MIN(order_month) OVER (PARTITION BY customer_id) THEN 1
+        ELSE 0
+    END as is_first_order
+FROM customer_orders
 ```
 
 C'est plus élégant qu'un self-join dans certains cas.
@@ -1478,26 +1547,23 @@ module_5 = Module(
     id="module_5_optimization",
     icon="speed",
     title="Optimisation & Performance",
-    subtitle="Index, EXPLAIN, CTEs matérialisées - Requêtes 10x plus rapides",
+    subtitle="Index, EXPLAIN, CTEs matérialisées - Diagnostiquer et optimiser",
     estimated_duration_min=30,
     lessons=[
         Lesson(
             title="Index et EXPLAIN - Diagnostiquer les ralentissements",
             theory="""## Index B-Tree : Accélérer les recherches
 
-Un **index** est une structure de données (arbre B équilibré) qui permet de retrouver des lignes rapidement.
+Un **index** est une structure qui permet d'accéder plus vite à certaines lignes.
+Son intérêt dépend de la requête (sélectivité du filtre, tri, jointure) et de la volumétrie.
 
-### Sans index : SCAN (O(n))
-```
-SELECT * FROM fact_orders WHERE order_date = '2017-06-15'
-→ SQLite parcourt TOUTES les 112k lignes (lent)
-```
+### Exemple sur le schéma Olist
+```sql
+-- Filtre très courant et souvent peu sélectif
+SELECT * FROM fact_orders WHERE order_status = 'delivered';
 
-### Avec index : SEARCH (O(log n))
-```
-CREATE INDEX idx_orders_date ON fact_orders(order_date);
-SELECT * FROM fact_orders WHERE order_date = '2017-06-15'
-→ SQLite cherche dans l'index (rapide, ~10-20 lookups)
+-- Filtre généralement plus sélectif
+SELECT * FROM fact_orders WHERE date_key = 20170615;
 ```
 
 ### EXPLAIN QUERY PLAN
@@ -1505,12 +1571,12 @@ Affiche le plan d'exécution :
 
 ```sql
 EXPLAIN QUERY PLAN
-SELECT * FROM fact_orders WHERE order_date >= '2017-01-01';
+SELECT * FROM fact_orders WHERE date_key >= 20170101;
 ```
 
-**Sortie** :
-- 🔴 `SCAN TABLE fact_orders` → Lent (parcours complet)
-- 🟢 `SEARCH TABLE fact_orders USING INDEX idx_orders_date` → Rapide
+**Interprétation typique** :
+- `SCAN TABLE fact_orders` : parcours complet de table
+- `SEARCH TABLE fact_orders USING INDEX ...` : utilisation d'index
 
 ### Quand indexer ?
 - ✅ Colonnes dans WHERE (filtrage)
@@ -1523,11 +1589,13 @@ SELECT * FROM fact_orders WHERE order_date >= '2017-01-01';
 Un index "couvrant" contient toutes les colonnes nécessaires :
 
 ```sql
-CREATE INDEX idx_orders_date_price ON fact_orders(order_date, price);
-SELECT order_date, price FROM fact_orders WHERE order_date >= '2017-01-01';
+CREATE INDEX idx_fact_status_date_price ON fact_orders(order_status, date_key, price);
+SELECT date_key, price
+FROM fact_orders
+WHERE order_status = 'delivered' AND date_key >= 20170101;
 ```
 
-SQLite peut répondre **uniquement avec l'index** sans lire la table → ultra-rapide.
+Selon le plan, SQLite peut parfois répondre avec moins d'accès à la table de base.
 """,
             concepts=[
                 CONCEPTS_INDEX["CREATE INDEX"],
@@ -1542,22 +1610,22 @@ SQLite peut répondre **uniquement avec l'index** sans lire la table → ultra-r
             title="Projection et sélectivité - SELECT stratégique",
             theory="""## Optimiser la projection et le filtrage
 
-### SELECT * : Le mal absolu
+### Projection ciblée
 ```sql
--- ❌ LENT : Transfère 20 colonnes (500 bytes/ligne)
+-- Plus de colonnes que nécessaire
 SELECT * FROM fact_orders WHERE order_status = 'delivered'
 
--- ✅ RAPIDE : Transfère 2 colonnes (50 bytes/ligne)
+-- Colonnes utiles uniquement
 SELECT order_id, price FROM fact_orders WHERE order_status = 'delivered'
 ```
 
-**Impact** : 10x moins de données transférées = 10x plus rapide.
+Réduire la projection diminue le volume de données à lire et transférer, surtout sur de gros jeux.
 
 ### Covering Index avec projection minimale
 ```sql
-CREATE INDEX idx_status_price ON fact_orders(order_status, price);
+CREATE INDEX idx_fact_status_price ON fact_orders(order_status, price);
 
--- Cette requête utilise uniquement l'index (ultra-rapide)
+-- Peut bénéficier d'un index couvrant selon le plan
 SELECT order_status, SUM(price)
 FROM fact_orders
 WHERE order_status = 'delivered'
@@ -1572,10 +1640,10 @@ La **sélectivité** = % de lignes gardées par le filtre.
 
 ```sql
 -- Haute sélectivité → Index utile
-WHERE order_date = '2017-06-15'  -- 0.01% des lignes
+WHERE date_key = 20170615
 
--- Faible sélectivité → Index inutile
-WHERE order_status = 'delivered'  -- 90% des lignes (SCAN plus efficace)
+-- Faible sélectivité → gain souvent limité
+WHERE order_status = 'delivered'
 ```
 
 ### LIMIT early
@@ -1583,7 +1651,11 @@ Ajoutez `LIMIT` tôt pour éviter de traiter toutes les lignes :
 
 ```sql
 -- ✅ Stoppe dès 10 lignes trouvées
-SELECT * FROM fact_orders WHERE order_date >= '2017-01-01' ORDER BY order_date LIMIT 10
+SELECT order_id, date_key, price
+FROM fact_orders
+WHERE order_status = 'delivered'
+ORDER BY date_key
+LIMIT 10
 ```
 """,
             concepts=[
@@ -1599,31 +1671,35 @@ SELECT * FROM fact_orders WHERE order_date >= '2017-01-01' ORDER BY order_date L
             title="CTEs matérialisées - Éviter les recalculs",
             theory="""## MATERIALIZED : Calculer une fois, utiliser plusieurs fois
 
-Par défaut, SQLite peut **inliner** une CTE (l'intégrer dans la requête externe). Cela signifie qu'une CTE référencée 3 fois peut être **exécutée 3 fois**.
+Par défaut, SQLite peut **inliner** une CTE (l'intégrer dans la requête externe). Une CTE référencée plusieurs fois peut alors être recalculée.
 
-### Sous-requête corrélée : Le pire scénario
+### Sous-requête corrélée : cas coûteux
 ```sql
--- ❌ TRÈS LENT : Exécutée 100k fois (1 fois par client)
 SELECT
-    c.customer_id,
-    (SELECT COUNT(*) FROM fact_orders o WHERE o.customer_id = c.customer_id) as nb_orders
+    c.customer_unique_id as customer_id,
+    (
+        SELECT COUNT(DISTINCT f.order_id)
+        FROM fact_orders f
+        WHERE f.customer_key = c.customer_key
+    ) as nb_orders
 FROM dim_customers c
 ```
 
 ### CTE MATERIALIZED : La solution
 ```sql
--- ✅ RAPIDE : Exécutée 1 seule fois
 WITH customer_orders AS MATERIALIZED (
-    SELECT customer_id, COUNT(*) as nb_orders
+    SELECT customer_key, COUNT(DISTINCT order_id) as nb_orders
     FROM fact_orders
-    GROUP BY customer_id
+    GROUP BY customer_key
 )
-SELECT c.customer_id, COALESCE(co.nb_orders, 0) as nb_orders
+SELECT
+    c.customer_unique_id as customer_id,
+    COALESCE(co.nb_orders, 0) as nb_orders
 FROM dim_customers c
-LEFT JOIN customer_orders co ON c.customer_id = co.customer_id
+LEFT JOIN customer_orders co ON c.customer_key = co.customer_key
 ```
 
-**Gain** : 100x-1000x plus rapide selon la taille.
+Le gain dépend de la charge et du plan, mais cette forme évite les recalculs inutiles.
 
 ### Quand utiliser ?
 - ✅ CTE référencée 2+ fois
@@ -1634,8 +1710,14 @@ LEFT JOIN customer_orders co ON c.customer_id = co.customer_id
 ### Vérifier avec EXPLAIN
 ```sql
 EXPLAIN QUERY PLAN
-WITH customer_orders AS MATERIALIZED (...)
-SELECT * FROM ...
+WITH customer_orders AS MATERIALIZED (
+    SELECT customer_key, COUNT(DISTINCT order_id) as nb_orders
+    FROM fact_orders
+    GROUP BY customer_key
+)
+SELECT c.customer_unique_id, COALESCE(co.nb_orders, 0) as nb_orders
+FROM dim_customers c
+LEFT JOIN customer_orders co ON c.customer_key = co.customer_key
 ```
 
 Cherchez "MATERIALIZE" dans le plan.

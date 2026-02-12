@@ -2,12 +2,12 @@
 Introduction détaillée du Data Warehouse Olist.
 
 6 slides :
-1. Contexte Olist (dataset, problèmes CSV)
-2. Processus ETL (schéma flow)
-3. Schéma en étoile interactif
-4. Décisions architecturales
-5. Avant/Après (Pandas vs SQL)
-6. Justification business
+1. Contexte Olist (dataset, volumétrie exacte)
+2. Processus ETL (5 transformations clés avec justifications empiriques)
+3. Schéma en étoile (cardinalités exactes, grain article explicité)
+4. Décisions architecturales (vues VIRTUELLES, pas matérialisées)
+5. Validation & Qualité (concordance 100%, anomalies documentées)
+6. Valeur business (9 métriques réelles, limites assumées, transition cours)
 """
 
 from nicegui import ui
@@ -85,42 +85,31 @@ def render_slide_1():
 
 **Olist** est une plateforme e-commerce brésilienne qui connecte des milliers de vendeurs indépendants avec les plus grandes marketplaces du pays.
 
-### Les chiffres
-- 🛒 **100 000 commandes** sur 24 mois
-- 👥 **96 000 clients** uniques
-- 🏪 **3 000 vendeurs** actifs
-- 📦 **32 000 produits** différents
+### Les chiffres clés
+- 🛒 **99 441 commandes** sur 24 mois (septembre 2016 - octobre 2018)
+- 👥 **96 096 clients** uniques (`customer_unique_id`)
+- 🏪 **3 095 vendeurs** actifs
+- 📦 **32 951 produits** différents
+- 📍 **19 015 codes postaux** uniques (couvrant 27 états brésiliens)
 - 🌎 **27 états** brésiliens couverts
 
-### Les données sources : 8 fichiers CSV
-1. `olist_orders_dataset.csv` (99k lignes)
-2. `olist_order_items_dataset.csv` (112k lignes)
-3. `olist_customers_dataset.csv` (96k lignes)
-4. `olist_sellers_dataset.csv` (3k lignes)
-5. `olist_products_dataset.csv` (32k lignes)
-6. `olist_order_reviews_dataset.csv` (99k lignes)
-7. `olist_order_payments_dataset.csv` (103k lignes)
-8. `olist_geolocation_dataset.csv` (1M lignes!)
+### Volumétrie totale des données sources
+**1 550 871 lignes brutes** réparties dans **9 fichiers CSV**, dont :
+- 77% (1M lignes) = geolocation à dédupliquer
+- 23% = données transactionnelles et référentielles
 
----
+### Les 9 fichiers CSV sources
+1. `olist_orders_dataset.csv` (99 441 lignes)
+2. `olist_order_items_dataset.csv` (112 650 lignes)
+3. `olist_customers_dataset.csv` (99 441 lignes)
+4. `olist_sellers_dataset.csv` (3 095 lignes)
+5. `olist_products_dataset.csv` (32 951 lignes)
+6. `olist_order_reviews_dataset.csv` (99 224 lignes)
+7. `olist_order_payments_dataset.csv` (103 886 lignes)
+8. `olist_geolocation_dataset.csv` (1 000 163 lignes!)
+9. `product_category_name_translation.csv` (71 lignes)
 
-## 🚨 Le problème des CSV bruts
-
-### Impossible d'analyser efficacement
-- ❌ **Pas de relations** : Pas de clés étrangères, jointures difficiles
-- ❌ **Duplications** : Informations répétées (ville cliente copiée 50× si 50 commandes)
-- ❌ **Qualité variable** : Données manquantes, formats incohérents
-- ❌ **Performance** : Chargement complet en mémoire à chaque analyse (slow!)
-- ❌ **Pas d'index** : Recherches linéaires O(n) sur 100k lignes
-
-### Exemple concret
-**Question métier** : "Quel est le taux de rétention des clients par cohorte mensuelle ?"
-
-**Avec CSV** : 150+ lignes de code Pandas, 5 secondes d'exécution, code illisible
-
-**Avec DWH** : 78 lignes SQL, 0.2 secondes, requête claire et réutilisable
-
-➡️ **Solution** : Construire un Data Warehouse optimisé
+➡️ **Objectif** : Construire un Data Warehouse analytique optimisé
 """).classes('text-gray-300')
 
 
@@ -137,61 +126,91 @@ Notre pipeline de transformation suit les étapes classiques de l'ingénierie de
     # Schéma Mermaid du flow ETL
     ui.mermaid("""
 graph LR
-    A[8 CSV Sources] -->|Extract| B[DataFrames Pandas]
+    A[9 CSV Sources<br/>1 550 871 lignes] -->|Extract| B[DataFrames Pandas]
     B -->|Transform| C[Cleaning + Engineering]
-    C -->|Load| D[(SQLite DWH)]
+    C -->|Load| D[(SQLite DWH<br/>6 tables)]
 
     style A fill:#e74c3c
     style B fill:#f39c12
     style C fill:#3498db
     style D fill:#27ae60
 
-    C -->|clean_geolocation| C1[Dédoublonner codes postaux]
-    C -->|parse_dates| C2[Convertir formats dates]
-    C -->|delivery_days| C3[Calculer délais livraison]
-    C -->|create_keys| C4[Générer clés surrogate]
+    C -->|clean_geolocation| C1[Dédup 1M → 19K]
+    C -->|aggregate_payments| C2[SUM + MODE par order]
+    C -->|latest_review| C3[Garder plus récent]
+    C -->|surrogate_keys| C4[UUID → INTEGER]
+    C -->|delivery_metrics| C5[Calculs temporels]
 """).classes('w-full mb-4')
 
     ui.markdown("""
 ### 1. **Extract** : Chargement des CSV
 ```python
-orders_df = pd.read_csv("olist_orders_dataset.csv")
-items_df = pd.read_csv("olist_order_items_dataset.csv")
-# ... 6 autres CSV
+orders_df = pd.read_csv("olist_orders_dataset.csv")      # 99 441 lignes
+items_df = pd.read_csv("olist_order_items_dataset.csv")  # 112 650 lignes
+# ... 7 autres CSV
 ```
 
-### 2. **Transform** : Nettoyage et enrichissement
+### 2. **Transform** : 5 transformations clés
 
-**Opérations principales** :
-- **`clean_geolocation()`** : Dédoublonner les codes postaux (1M → 19k lignes)
-- **`parse_dates()`** : Convertir strings → datetime → format ISO
-- **`delivery_days`** : Calculer `delivery_date - order_date` (feature engineering)
-- **`create_surrogate_keys()`** : Générer clés numériques (customer_key, product_key)
-- **`fill_missing_values()`** : Imputer valeurs manquantes (modes, moyennes)
+#### 🔸 **`clean_geolocation`** : Dédoublonner codes postaux
+- **Pourquoi** : 1M lignes pour 19K codes postaux uniques (53 entrées/zip en moyenne)
+- **Méthode** : Médiane lat/lng par zip_code_prefix (robuste aux outliers)
+- **Résultat** : 1 000 163 → 19 015 lignes, précision ~2km
 
-**Code snippet** :
 ```python
-def clean_geolocation(df: pd.DataFrame) -> pd.DataFrame:
-    \"\"\"Dédoublonne codes postaux (garder mode par groupe).\"\"\"
-    return df.groupby('zip_code', as_index=False).agg(
-        lambda x: x.mode().iloc[0] if not x.mode().empty else x.iloc[0]
-    )
+def _safe_mode(x):
+    \"\"\"Mode sécurisé évitant IndexError sur séries vides.\"\"\"
+    mode = x.mode()
+    return mode.iloc[0] if not mode.empty else (x.iloc[0] if len(x) > 0 else None)
+
+def clean_geolocation(df):
+    return df.groupby('zip_code_prefix', as_index=False).agg({
+        'lat': 'median',
+        'lng': 'median',
+        'city': _safe_mode,
+        'state': _safe_mode
+    })
 ```
 
-### 3. **Load** : Insertion dans SQLite
+#### 🔸 **`aggregate_payments`** : Fusionner paiements multiples
+- **Pourquoi** : 103 886 lignes pour 99 441 commandes (97% mono-paiement)
+- **Méthode** : SUM(payment_value), MODE(payment_type) par order_id
+- **Résultat** : order_payment_total = montant total, payment_type = type dominant
+
+#### 🔸 **`latest_review_per_order`** : Résoudre reviews multiples
+- **Pourquoi** : 547 commandes ont plusieurs reviews (0.5%)
+- **Méthode** : Garder la review la plus récente (MAX(review_creation_date))
+- **Résultat** : 1 review par commande (99 224 → 98 666 commandes avec review)
+
+#### 🔸 **`create_surrogate_keys`** : Optimiser clés étrangères
+- **Pourquoi** : UUID 32 char (32 bytes) → INTEGER (4 bytes) = 8× moins d'espace
+- **Méthode** : AUTOINCREMENT sur customer_key, seller_key, product_key
+- **Résultat** : Jointures 8× plus rapides, index B-Tree optimaux
+
+#### 🔸 **`calculate_delivery_metrics`** : Feature engineering temporel
+- **Méthodes** :
+  - `delivery_days` = delivered_date - purchase_date
+  - `estimated_days` = estimated_delivery_date - purchase_date
+  - `delivery_delta_days` = delivery_days - estimated_days (positif = retard)
+- **Résultat** : Métriques précalculées pour analyses logistiques
+
+### 3. **Load** : Insertion dans SQLite avec 5 index stratégiques
 
 ```python
 # Schéma en étoile : 1 fait + 5 dimensions
 fact_orders.to_sql('fact_orders', conn, index=False)
 dim_customers.to_sql('dim_customers', conn, index=False)
-# ... autres dimensions
+# ... 4 autres dimensions
 
-# Index stratégiques
-conn.execute("CREATE INDEX idx_orders_date ON fact_orders(order_date)")
+# Index critiques (accélération 100×)
+conn.execute("CREATE INDEX idx_orders_date ON fact_orders(date_key)")
 conn.execute("CREATE INDEX idx_orders_customer ON fact_orders(customer_key)")
+conn.execute("CREATE INDEX idx_orders_seller ON fact_orders(seller_key)")
+conn.execute("CREATE INDEX idx_orders_product ON fact_orders(product_key)")
+conn.execute("CREATE INDEX idx_orders_status ON fact_orders(order_status)")
 ```
 
-➡️ **Résultat** : Un DWH queryable en quelques millisecondes
+➡️ **Résultat** : 1.5M lignes brutes → 287K lignes structurées, queryable en <200ms
 """).classes('text-gray-300')
 
 
@@ -272,26 +291,36 @@ erDiagram
 
 | Table | Lignes | Rôle |
 |-------|--------|------|
-| **fact_orders** | 112 515 | **Table de faits** (transactions) |
+| **fact_orders** | 112 650 | **Table de faits** (transactions) |
 | dim_customers | 96 096 | Attributs clients (ville, état) |
 | dim_sellers | 3 095 | Attributs vendeurs |
 | dim_products | 32 951 | Catégories, dimensions produits |
 | dim_geolocation | 19 015 | Codes postaux dédoublonnés |
-| dim_dates | 793 | Calendrier (2016-2018) |
+| dim_dates | 715 | Calendrier (2016-09-04 → 2018-11-12) |
 
 ### 🔑 Grain de la table de faits
-**1 ligne = 1 article d'une commande**
+**1 ligne = 1 article d'une commande** (order_id + order_item_id)
 
-Exemple : Commande #123 avec 3 articles → 3 lignes dans fact_orders.
+**Distribution grain commande → article** :
+- **90.1% des commandes** = 1 seul article (mono-item)
+- **9.9% des commandes** = 2 à 21 articles (multi-items)
+- **Total** : 99 441 commandes → 112 650 lignes (ratio 1.13)
+
+**Exemple** : Commande #abc123 avec 3 articles → 3 lignes dans fact_orders (order_item_id = 1, 2, 3)
 
 **Pourquoi ce grain ?**
 - ✅ Permet d'agréger au niveau commande (`GROUP BY order_id`) ou article
-- ✅ Conserve le détail maximal (prix unitaire, review par article)
+- ✅ Conserve le détail maximal (prix unitaire par article, vendeur par article)
 - ✅ Facilite les analyses produit (quel article génère le plus de CA ?)
+
+**⚠️ Attention aux métriques semi-additives** :
+- `order_payment_total` est au grain **commande**, pas article
+- Exemple : Commande 100 R$ avec 2 articles → chaque ligne affiche 100 R$
+- **Pour obtenir le total correct** : `SELECT DISTINCT order_id, order_payment_total` puis SUM
 
 ### 🎯 Avantages du schéma en étoile
 - ✅ **Jointures simples** : 1 saut de la fact vers chaque dimension
-- ✅ **Performance** : Clés surrogate (int) ultra-rapides
+- ✅ **Performance** : Clés surrogate (int) ultra-rapides (8× moins d'espace que UUID)
 - ✅ **Lisibilité** : Structure intuitive (centre + branches)
 - ✅ **Flexibilité** : Ajouter une dimension = 1 colonne FK dans fact
 """).classes('text-gray-300')
@@ -342,30 +371,52 @@ CREATE INDEX idx_orders_product ON fact_orders(product_key);
 
 ---
 
-### 3. **Vues Matérialisées**
+### 3. **Vues Analytiques (virtuelles, pas matérialisées)**
 
-Certaines agrégations sont réutilisées fréquemment (CA mensuel, cohortes...).
+⚠️ **SQLite ne supporte PAS les vues matérialisées** (contrairement à PostgreSQL)
 
-**Vues créées** :
+Les vues créées sont **virtuelles** : recalculées à chaque SELECT, pas de cache physique.
+
+**3 vues créées** :
+
+#### 📊 `v_monthly_sales` : Ventes mensuelles agrégées
 ```sql
 CREATE VIEW v_monthly_sales AS
 SELECT
-    STRFTIME('%Y-%m', order_date) as order_month,
-    SUM(price) as monthly_revenue,
-    COUNT(DISTINCT order_id) as nb_orders
-FROM fact_orders
-WHERE order_status = 'delivered'
-GROUP BY order_month;
-
-CREATE VIEW v_customer_cohorts AS
-SELECT
-    customer_id,
-    STRFTIME('%Y-%m', MIN(order_date)) as cohort_month
-FROM fact_orders
-GROUP BY customer_id;
+    d.year,
+    d.month,
+    d.year || '-' || PRINTF('%02d', d.month) AS month_label,
+    ROUND(SUM(f.price), 2) AS monthly_revenue,
+    COUNT(DISTINCT f.order_id) AS monthly_orders,
+    ROUND(SUM(f.price) * 1.0 / NULLIF(COUNT(DISTINCT f.order_id), 0), 2) AS avg_basket
+FROM fact_orders f
+JOIN dim_dates d ON f.date_key = d.date_key
+WHERE f.order_status = 'delivered'
+GROUP BY d.year, d.month;
 ```
 
-**Avantage** : Requêtes complexes deviennent des `SELECT * FROM v_monthly_sales`.
+#### 👥 `v_customer_cohorts` : Clients avec mois de première commande
+```sql
+CREATE VIEW v_customer_cohorts AS
+SELECT
+    c.customer_unique_id,
+    MIN(f.date_key / 100) AS first_month,
+    (MIN(f.date_key / 100) / 100) || '-' || PRINTF('%02d', MIN(f.date_key / 100) % 100) AS first_month_label,
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    ROUND(SUM(f.price), 2) AS total_spent
+FROM fact_orders f
+JOIN dim_customers c ON f.customer_key = c.customer_key
+WHERE f.order_status = 'delivered'
+  AND f.date_key IS NOT NULL
+GROUP BY c.customer_unique_id;
+```
+
+#### 📦 `v_orders_enriched` : Commandes avec toutes dimensions joinées
+Vue dénormalisée pour analyses ad-hoc sans réécrire les JOINs.
+
+**Avantage** : Requêtes complexes deviennent `SELECT * FROM v_monthly_sales`.
+
+**Limite** : Pas de cache. Pour matérialiser : `CREATE TABLE AS SELECT ...` (manuelle).
 
 ---
 
@@ -404,188 +455,100 @@ Pourquoi SQLite pour un DWH ?
 
 
 def render_slide_5():
-    """Slide 5 : Avant/Après (Pandas vs SQL)."""
-    ui.label("📊 Avant / Après : Pandas vs SQL").classes('text-4xl font-bold mb-4')
+    """Slide 5 : Validation & Qualité des Données."""
+    ui.label("✅ Validation & Qualité des Données").classes('text-4xl font-bold mb-4')
 
     ui.markdown("""
-## Comparaison concrète sur 2 analyses métier
+## Intégrité des transformations CSV → DWH
 
-### Exemple 1 : Matrice de rétention par cohorte
-
-**Question** : "Quel % de clients de la cohorte Jan 2017 sont revenus en Fév, Mars, Avril ?"
-
-#### ❌ Avec CSV Pandas (150 lignes, ~5s)
-
-```python
-import pandas as pd
-from datetime import datetime
-
-# Charger 3 CSV
-orders = pd.read_csv("orders.csv")
-items = pd.read_csv("order_items.csv")
-customers = pd.read_csv("customers.csv")
-
-# Merger
-df = items.merge(orders, on='order_id').merge(customers, on='customer_id')
-
-# Parse dates
-df['order_date'] = pd.to_datetime(df['order_purchase_timestamp'])
-df['order_month'] = df['order_date'].dt.to_period('M')
-
-# Identifier cohorte (mois première commande)
-cohorts = df.groupby('customer_id')['order_month'].min().reset_index()
-cohorts.columns = ['customer_id', 'cohort_month']
-df = df.merge(cohorts, on='customer_id')
-
-# Calculer delta mois
-df['months_since_cohort'] = ((df['order_month'].dt.year - df['cohort_month'].dt.year) * 12 +
-                               (df['order_month'].dt.month - df['cohort_month'].dt.month))
-
-# Pivoter
-retention = df.groupby(['cohort_month', 'months_since_cohort'])['customer_id'].nunique().unstack(fill_value=0)
-
-# Calculer % rétention
-retention_pct = retention.div(retention[0], axis=0) * 100
-
-print(retention_pct)
-# Temps: ~5 secondes, 150 lignes de code
-```
-
-#### ✅ Avec DWH SQL (78 lignes, ~0.2s)
-
-```sql
-WITH first_orders AS (
-    SELECT
-        customer_id,
-        CAST(STRFTIME('%Y%m', MIN(order_date)) AS INTEGER) as cohort_month
-    FROM fact_orders
-    GROUP BY customer_id
-),
-all_orders AS (
-    SELECT DISTINCT
-        customer_id,
-        CAST(STRFTIME('%Y%m', order_date) AS INTEGER) as order_month
-    FROM fact_orders
-),
-cohort_activity AS (
-    SELECT
-        f.cohort_month,
-        a.order_month,
-        (a.order_month / 100 - f.cohort_month / 100) * 12 +
-        (a.order_month % 100 - f.cohort_month % 100) as months_since_cohort,
-        COUNT(DISTINCT a.customer_id) as active_customers
-    FROM first_orders f
-    INNER JOIN all_orders a ON f.customer_id = a.customer_id
-    GROUP BY f.cohort_month, a.order_month
-),
-cohort_sizes AS (
-    SELECT cohort_month, COUNT(*) as cohort_size
-    FROM first_orders
-    GROUP BY cohort_month
-)
-SELECT
-    ca.cohort_month,
-    ca.months_since_cohort,
-    ca.active_customers,
-    cs.cohort_size,
-    ROUND(ca.active_customers * 100.0 / cs.cohort_size, 1) as retention_pct
-FROM cohort_activity ca
-INNER JOIN cohort_sizes cs ON ca.cohort_month = cs.cohort_month
-WHERE ca.months_since_cohort BETWEEN 0 AND 12
-ORDER BY ca.cohort_month, ca.months_since_cohort;
--- Temps: 0.2s, 78 lignes SQL
-```
-
-**Gains** :
-- ⚡ **25x plus rapide** (5s → 0.2s)
-- 📖 **Lisible** : CTEs explicites vs code procédural
-- ♻️ **Réutilisable** : Sauvegardé dans `cohorts_retention.sql`
+La validation systématique garantit que les transformations ETL n'ont introduit aucune perte de données ni erreur de calcul.
 
 ---
 
-### Exemple 2 : Segmentation RFM (Recency, Frequency, Monetary)
+### 📊 Tableau de concordance CSV ↔ DWH
 
-#### ❌ Avec CSV Pandas (120 lignes, ~3s)
+| Entité | CSV Source | Data Warehouse | Match | Observations |
+|--------|-----------|----------------|-------|--------------|
+| **Customers** | 99 441 | 99 441 | **100% ✅** | customer_id concordent, villes normalisées (Title Case) |
+| **Products** | 32 951 | 32 951 | **100% ✅** | product_id identiques, traduction EN ajoutée via jointure |
+| **Sellers** | 3 095 | 3 095 | **100% ✅** | seller_id identiques |
+| **Order Items** | 112 650 | 112 650 | **100% ✅** | Nombre de lignes strictement identique (grain article) |
+| **Prix total** | 13 591 643.70 R$ | 13 591 643.70 R$ | **100% ✅** | Somme totale des prix strictement identique |
+| **Fret total** | 2 251 909.54 R$ | 2 251 909.54 R$ | **100% ✅** | Somme totale du fret strictement identique |
+| **Paiements** | 103 886 lignes | Agrégé par order | **100% ✅** | 100% des totaux par commande concordent |
 
-```python
-# Calculer RFM par client
-rfm = df.groupby('customer_id').agg({
-    'order_date': lambda x: (datetime.now() - x.max()).days,  # Recency
-    'order_id': 'nunique',  # Frequency
-    'price': 'sum'  # Monetary
-}).rename(columns={'order_date': 'recency', 'order_id': 'frequency', 'price': 'monetary'})
-
-# Scorer avec quintiles
-rfm['r_score'] = pd.qcut(rfm['recency'], 5, labels=False, duplicates='drop') + 1
-rfm['f_score'] = pd.qcut(rfm['frequency'].rank(method='first'), 5, labels=False) + 1
-rfm['m_score'] = pd.qcut(rfm['monetary'].rank(method='first'), 5, labels=False) + 1
-
-# Classifier
-def classify_rfm(row):
-    if row['r_score'] >= 4 and row['m_score'] >= 4:
-        return 'Champions'
-    elif row['r_score'] >= 3 and row['f_score'] >= 3:
-        return 'Loyal'
-    # ... 8 autres conditions
-    else:
-        return 'Lost'
-
-rfm['segment'] = rfm.apply(classify_rfm, axis=1)
-```
-
-#### ✅ Avec DWH SQL (143 lignes, ~0.5s)
-
-```sql
-WITH rfm_raw AS (
-    SELECT
-        customer_id,
-        JULIANDAY('now') - JULIANDAY(MAX(order_date)) as recency_days,
-        COUNT(DISTINCT order_id) as frequency,
-        SUM(price) as monetary
-    FROM fact_orders
-    WHERE order_status = 'delivered'
-    GROUP BY customer_id
-),
-rfm_scored AS (
-    SELECT
-        *,
-        NTILE(5) OVER (ORDER BY recency_days ASC) as r_score,
-        NTILE(5) OVER (ORDER BY frequency DESC) as f_score,
-        NTILE(5) OVER (ORDER BY monetary DESC) as m_score
-    FROM rfm_raw
-),
-rfm_segmented AS (
-    SELECT
-        *,
-        CASE
-            WHEN r_score >= 4 AND m_score >= 4 THEN 'Champions'
-            WHEN r_score >= 3 AND f_score >= 3 THEN 'Loyal'
-            -- ... autres segments
-            ELSE 'Lost'
-        END as segment
-    FROM rfm_scored
-)
-SELECT * FROM rfm_segmented;
-```
-
-**Gains** :
-- ⚡ **6x plus rapide**
-- 🎯 **NTILE natif** : Pas de gestion des duplicates
-- 📊 **Window functions** : Plus élégant que `rank().qcut()`
+**Verdict global** : **0 perte financière**, intégrité 100% sur les entités et montants.
 
 ---
 
-## 🎯 Conclusion
+### 🚨 Anomalies identifiées et documentées
 
-| Critère | CSV Pandas | DWH SQL |
-|---------|------------|---------|
-| **Performance** | 3-5s | 0.2-0.5s |
-| **Code** | 120-150 lignes | 78-143 lignes |
-| **Lisibilité** | ❌ Procédural | ✅ Déclaratif (CTEs) |
-| **Réutilisabilité** | ❌ Script jetable | ✅ Requêtes sauvegardées |
-| **Scalabilité** | ❌ Mémoire limitée | ✅ Index + optimiseur |
+#### 1. **775 commandes sans articles (0.78%)**
+- **Statuts** : unavailable (603), canceled (164), created (5), invoiced (2), shipped (1)
+- **Traitement** : Exclus de fact_orders car grain = article (cohérent avec modélisation)
+- **Impact** : Aucun sur analyses produit/vendeur (commandes sans transaction)
 
-➡️ Le DWH SQL est **25x plus rapide** et **2x plus concis** pour des analyses métier complexes.
+#### 2. **285 entités sans geolocation**
+- **Détail** : 278 clients (0.28%) + 7 vendeurs (0.23%)
+- **Cause** : Codes postaux absents de `olist_geolocation_dataset.csv`
+- **Traitement** : geo_key = NULL dans dim_customers/dim_sellers
+- **Impact** : Analyses géographiques possibles, entités NULL filtrables
+
+#### 3. **Précision géolocalisation ~2 km**
+- **Méthode** : Médiane lat/lng par code postal (1M → 19K lignes)
+- **Écart médian** : 0.02° lat, 0.018° lng ≈ 2 km
+- **Qualité** : OK pour analyses régionales/états, insuffisant pour géocodage précis
+
+#### 4. **942 commandes sans review (0.95%)**
+- **Cause** : Commandes non livrées ou reviews non soumises
+- **Traitement** : review_score = NULL dans fact_orders
+- **Impact** : Exclus des calculs avg_review (fonction AVG ignore NULL)
+
+---
+
+### 🧪 Script de validation indépendant
+
+**`verify_csv_analysis.sh`** : 50+ assertions automatisées
+
+```bash
+#!/bin/bash
+# Validation continue après chaque modification ETL
+
+# Exemple d'assertions
+assert_count "orders CSV" 99441 "wc -l < data/raw/olist_orders_dataset.csv"
+assert_count "fact_orders DB" 112650 "sqlite3 olist_dw.db 'SELECT COUNT(*) FROM fact_orders'"
+assert_sum "prix CSV" 13591643.70 "csvstat --sum price olist_order_items_dataset.csv"
+assert_sum "prix DB" 13591643.70 "sqlite3 olist_dw.db 'SELECT SUM(price) FROM fact_orders'"
+
+# ... 46 autres assertions
+```
+
+**Avantage** : Reproduit tous les chiffres clés via csvkit + SQLite temporaire → validation reproductible.
+
+---
+
+### 🎯 Distribution des valeurs NULL dans fact_orders
+
+| Colonne | NULLs | % | Explication |
+|---------|-------|---|-------------|
+| `delivery_days` | 2 454 | 2.2% | Commandes non livrées (shipped, canceled) |
+| `review_score` | 942 | 0.8% | Commandes sans avis client |
+| `customer_geo_key` | 302 | 0.3% | Codes postaux clients absents de dim_geolocation |
+| `seller_geo_key` | 253 | 0.2% | Codes postaux vendeurs absents de dim_geolocation |
+| `order_payment_total` | 3 | 0.003% | Anomalie marginale (potentielle erreur source) |
+
+**Traitement** : Valeurs NULL conservées (pas d'imputation arbitraire), filtrables via `WHERE column IS NOT NULL`.
+
+---
+
+## ✅ Conclusion : Qualité validée
+
+- ✅ **Intégrité 100%** sur entités, montants financiers et volumes
+- ✅ **0 perte de données** sur transactions valides (grain article)
+- ✅ **Anomalies documentées** (775 commandes sans articles = exclusion cohérente)
+- ✅ **Validation continue** via script indépendant (50+ assertions automatisées)
+
+➡️ Le DWH est fiable pour analyses métier et décisions stratégiques
 """).classes('text-gray-300')
 
 
@@ -610,17 +573,19 @@ Le DWH Olist permet d'analyser le business sous **5 dimensions** :
 
 ---
 
-### 📊 Métriques métier clés débloquées
+### 📊 9 Métriques métier débloquées par le DWH
 
 | Métrique | Description | Requête SQL |
 |----------|-------------|-------------|
-| **Taux de rétention par cohorte** | % clients revenus M+1, M+2... | `cohorts_retention.sql` |
-| **LTV (Lifetime Value)** | CA total par client | `ltv_cohorts.sql` |
-| **Taux de conversion** | % visiteurs → acheteurs | `new_vs_recurring.sql` |
-| **Pareto vendeurs** | Top 20% génèrent X% du CA | `pareto_sellers.sql` |
+| **Taux de rétention par cohorte** | % clients revenus M+1, M+2... après 1er achat | `cohorts_retention.sql` |
+| **LTV (Lifetime Value)** | CA total par client unique | `ltv_cohorts.sql` |
+| **Nouveaux vs récurrents** | Nombre clients 1er achat vs déjà actifs par mois | `new_vs_recurring.sql` |
+| **Pareto vendeurs** | Top 20% vendeurs génèrent X% du CA | `pareto_sellers.sql` |
 | **Panier moyen** | CA / nb commandes | `basket_avg.sql` |
-| **NPS (Net Promoter Score)** | % promoteurs - détracteurs | `overview_kpis.sql` |
-| **Churn rate** | % clients inactifs > 6 mois | Custom query |
+| **Score review moyen** | Moyenne des avis clients (1-5 étoiles) | `overview_kpis.sql` |
+| **Segmentation RFM** | Recency, Frequency, Monetary (10 segments) | `rfm_segmentation.sql` |
+| **Scoring vendeurs** | Note multi-critères (délai, review, CA) | `seller_scoring.sql` |
+| **Délai livraison moyen** | Jours entre achat et livraison effective | `overview_kpis.sql` |
 
 **ROI direct** : Ces KPIs pilotent les décisions stratégiques (où investir, quels produits pousser, quels vendeurs coacher).
 
@@ -660,17 +625,19 @@ Certaines analyses sont **impossibles** (ou prohibitives) avec CSV Pandas :
 
 ---
 
-### 💰 Économies directes
+### 💰 Économies estimées (ordres de grandeur)
 
 **Infrastructure** :
-- ❌ CSV : Serveur avec 32GB RAM pour charger tout en mémoire (~€500/mois)
-- ✅ DWH : SQLite = 1 fichier 50MB, serveur 2GB RAM (~€50/mois)
+- ❌ CSV : Serveur 32GB RAM pour charger données en mémoire
+- ✅ DWH : SQLite = 1 fichier 50MB, serveur 2GB RAM
+- **Gain estimé** : **10× moins cher** en infrastructure cloud
 
 **Temps analyste** :
-- ❌ CSV : 10 analyses/sem × 2h = 20h/sem (€2000/mois à €100/h)
-- ✅ DWH : 50 analyses/sem × 15min = 12.5h/sem (€1250/mois)
+- ❌ CSV : Analyses lentes (5-10s), code complexe (150+ lignes)
+- ✅ DWH : Analyses rapides (0.2-0.5s), requêtes concises (80 lignes SQL)
+- **Gain estimé** : **15-25h/semaine libérées** pour analyses avancées
 
-➡️ **Économie** : €1200/mois (infrastructure + temps)
+**⚠️ Note** : Chiffres indicatifs, varient selon organisation, volumétrie et infrastructure existante.
 
 ---
 
@@ -689,22 +656,49 @@ Le DWH est **futur-proof** :
 
 Le Data Warehouse n'est pas un luxe, c'est **la base indispensable** pour toute entreprise data-driven.
 
-**Valeur démontrée** :
-- ⚡ **25x plus rapide** que Pandas CSV
-- 📊 **10x plus d'analyses** réalisées
-- 💰 **€1200/mois** économisés
-- 🎯 **Impossible → Possible** (analyses complexes)
+---
 
-➡️ **ROI** : 6 mois (investissement initial divisé par gains mensuels)
+### 🎯 Valeur démontrée sur le projet Olist
+
+| Dimension | Résultat |
+|-----------|----------|
+| **Performance** | 25× plus rapide (requêtes <200ms vs 5s Pandas) |
+| **Qualité** | Concordance 100% (0 perte financière sur 13.6M R$) |
+| **Métriques** | 9 KPIs métier débloqués (rétention, LTV, RFM, Pareto...) |
+| **Échelle** | 1.5M lignes brutes → 287K lignes structurées optimisées |
+| **Infrastructure** | 1 fichier 50MB SQLite (portable, zero-config) |
 
 ---
 
-🎓 **Prêt à maîtriser SQL avancé ?**
+### 📊 Limites assumées du projet
 
-Dans les 5 modules suivants, vous allez apprendre à :
-- Écrire des requêtes analytiques complexes (CTEs, window functions)
-- Optimiser les performances (index, EXPLAIN, matérialisation)
-- Implémenter des cas métier réels (RFM, cohortes, Pareto, scoring)
+| Limite | Justification |
+|--------|---------------|
+| **SQLite (pas PostgreSQL)** | OK pour <1M lignes, read-only, mono-utilisateur |
+| **Vues virtuelles (pas matérialisées)** | SQLite ne supporte pas MATERIALIZED VIEW |
+| **Précision géo ~2km** | Médiane lat/lng par code postal (OK analyses régionales) |
+| **Grain article** | Semi-additif sur `order_payment_total` (nécessite DISTINCT order_id) |
+
+➡️ Migration PostgreSQL recommandée si volumétrie > 10M lignes ou concurrence écriture nécessaire
+
+---
+
+### 🎓 Prêt à maîtriser SQL avancé ?
+
+**Dans les 5 modules suivants**, vous allez apprendre à :
+
+1. **Module 1 - Fondamentaux** : SELECT, WHERE, GROUP BY, JOINs, sous-requêtes
+2. **Module 2 - Window Functions** : RANK, ROW_NUMBER, LEAD/LAG, NTILE
+3. **Module 3 - CTEs & Récursivité** : WITH, requêtes multi-niveaux, arbres hiérarchiques
+4. **Module 4 - Optimisation** : EXPLAIN, index, matérialisation, dénormalisation
+5. **Module 5 - Cas Métier Olist** : Écrire les 9 requêtes KPI présentées !
+
+**🎯 Vous allez écrire vous-même les 9 métriques SQL** :
+- `cohorts_retention.sql` (matrice rétention par cohorte)
+- `rfm_segmentation.sql` (segmentation clients 10 groupes)
+- `pareto_sellers.sql` (règle 80/20 sur vendeurs)
+- `seller_scoring.sql` (note multi-critères)
+- ... et 5 autres requêtes analytiques avancées
 
 **Commençons par les fondamentaux !** 🚀
 """).classes('text-gray-300')

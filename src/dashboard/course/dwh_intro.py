@@ -14,30 +14,159 @@ Introduction détaillée du Data Warehouse Olist.
 from nicegui import ui
 
 
-def render_intro_carousel():
+def render_intro_carousel(initial_index: int = 0):
     """Affiche l'introduction DWH avec navigation manuelle entre slides."""
 
-    # État de navigation
-    current_slide = {'index': 0}
     total_slides = 7
+    clamped_index = max(0, min(total_slides - 1, initial_index))
+    current_slide = {'index': clamped_index}
+    post_nav_js = '''
+        (...args) => {
+            const beforeIndex =
+                document.getElementById('intro-slide-marker')?.dataset?.slideIndex ?? null;
+            const startedAt = Date.now();
+            const slideHost = document.getElementById('intro-slide-host');
+            const pageShell = document.querySelector('.intro-home-shell');
+
+            const hideDuringTransition = () => {
+                if (pageShell) {
+                    pageShell.style.pointerEvents = 'none';
+                }
+                if (slideHost) {
+                    slideHost.style.opacity = '0';
+                }
+            };
+
+            const showAfterTransition = (delay = 200) => {
+                setTimeout(() => {
+                    if (slideHost) {
+                        slideHost.style.opacity = '1';
+                    }
+                    if (pageShell) {
+                        pageShell.style.pointerEvents = '';
+                    }
+                }, delay);
+            };
+
+            const resetScrollTop = () => {
+                const anchor = document.getElementById('intro-top');
+                const targets = new Set([
+                    document.scrollingElement,
+                    document.documentElement,
+                    document.body,
+                ]);
+                const active = document.activeElement;
+
+                document
+                    .querySelectorAll(
+                        '.q-page, .q-page-container, .nicegui-content, .overflow-y-auto, .q-scrollarea__container'
+                    )
+                    .forEach((el) => targets.add(el));
+
+                if (active && typeof active.blur === 'function') {
+                    active.blur();
+                }
+
+                targets.forEach((el) => {
+                    if (!el) return;
+                    try {
+                        el.style.overflowAnchor = 'none';
+                    } catch (_) {}
+                    try {
+                        if (typeof el.scrollTo === 'function') {
+                            el.scrollTo({top: 0, left: 0, behavior: 'auto'});
+                        }
+                    } catch (_) {}
+                    try {
+                        el.scrollTop = 0;
+                        el.scrollLeft = 0;
+                    } catch (_) {}
+                });
+
+                if (anchor) {
+                    anchor.scrollIntoView({block: 'start', behavior: 'auto'});
+                }
+                window.scrollTo({top: 0, left: 0, behavior: 'auto'});
+            };
+
+            hideDuringTransition();
+            // Garde-fou pour éviter de laisser l'UI masquée en cas d'imprévu.
+            showAfterTransition(1800);
+
+            const waitForSlideUpdate = () => {
+                const currentIndex =
+                    document.getElementById('intro-slide-marker')?.dataset?.slideIndex ?? null;
+                const changed = currentIndex !== beforeIndex;
+                const timedOut = Date.now() - startedAt > 1400;
+
+                if (changed || timedOut) {
+                    requestAnimationFrame(() => {
+                        resetScrollTop();
+                        setTimeout(resetScrollTop, 140);
+                        // Slide 3 (index 2) contient un gros Mermaid qui se stabilise plus tard.
+                        if (currentIndex === '2') {
+                            setTimeout(resetScrollTop, 360);
+                            setTimeout(resetScrollTop, 720);
+                            showAfterTransition(780);
+                        } else {
+                            showAfterTransition(220);
+                        }
+                    });
+                    return;
+                }
+                setTimeout(waitForSlideUpdate, 35);
+            };
+
+            setTimeout(waitForSlideUpdate, 30);
+        }
+    '''
 
     # Container principal
-    slide_container = ui.column().classes('w-full')
+    slide_container = (
+        ui.column()
+        .props('id=intro-slide-host')
+        .classes('w-full')
+        .style('overflow-anchor: none; opacity: 1; transition: opacity 0.14s ease;')
+    )
+
+    def go_to_slide(index: int):
+        """Navigue vers un slide précis sans recharger la page."""
+        target_index = max(0, min(total_slides - 1, index))
+        if target_index == current_slide['index']:
+            return
+        current_slide['index'] = target_index
+        render_slide(target_index)
+
+    def go_prev():
+        """Navigue vers le slide précédent."""
+        go_to_slide(current_slide['index'] - 1)
+
+    def go_next():
+        """Navigue vers le slide suivant."""
+        go_to_slide(current_slide['index'] + 1)
 
     def render_slide(index: int):
         """Affiche le slide à l'index donné."""
         slide_container.clear()
 
         with slide_container:
+            ui.element('div').props('id=intro-slide-marker').props(
+                f'data-slide-index={index}'
+            ).classes('hidden')
+
             # Progress indicator
             with ui.column().classes('w-full items-center mb-6'):
                 # Dots
                 with ui.row().classes('gap-2'):
                     for i in range(total_slides):
                         if i == index:
-                            ui.label('●').classes('text-green-500 text-3xl')
+                            ui.label('●').classes('text-green-500 text-3xl min-w-0 px-1')
                         else:
-                            ui.label('○').classes('text-gray-600 text-3xl')
+                            ui.button('○', on_click=lambda target=i: go_to_slide(target)).props(
+                                'flat dense'
+                            ).classes(
+                                'text-gray-600 hover:text-gray-400 text-3xl min-w-0 px-1'
+                            ).on('click', js_handler=post_nav_js)
 
                 # Indicateur textuel
                 slide_titles = [
@@ -69,28 +198,27 @@ def render_intro_carousel():
                     render_slide_7()
 
             # Navigation
-            with ui.row().classes('w-full justify-between mt-4'):
+            with ui.row().classes('w-full justify-between mt-4 intro-nav-footer'):
                 if index > 0:
-                    ui.button('← Précédent', on_click=lambda: navigate(-1)).props('outline color=primary')
+                    ui.button('← Précédent', on_click=go_prev).props('outline color=primary').on(
+                        'click', js_handler=post_nav_js
+                    )
                 else:
                     ui.label('')  # Spacer
 
                 if index < total_slides - 1:
-                    ui.button('Suivant →', on_click=lambda: navigate(1)).props('color=primary')
+                    ui.button('Suivant →', on_click=go_next).props('color=primary').on(
+                        'click', js_handler=post_nav_js
+                    )
                 else:
                     ui.button('Commencer le cours 🚀', on_click=start_course).props('color=positive')
-
-    def navigate(delta: int):
-        """Navigue entre les slides."""
-        current_slide['index'] = max(0, min(total_slides - 1, current_slide['index'] + delta))
-        render_slide(current_slide['index'])
 
     def start_course():
         """Redirige vers la première leçon."""
         ui.navigate.to('/presentation/module_1_fundamentals/0')
 
     # Afficher premier slide
-    render_slide(0)
+    render_slide(current_slide['index'])
 
 
 def render_slide_1():

@@ -167,5 +167,95 @@ pre.sql-demo-block {
     background: #00C853;
     transition: width 0.3s ease;
 }
+
+/* Intro navigation sticky footer (presentation slides) */
+.intro-nav-footer {
+    position: fixed !important;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 16px 40px;
+    background: rgba(18, 18, 18, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 1000;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.intro-home-shell {
+    padding-bottom: 96px !important;
+}
+
+.intro-nav-footer .q-btn {
+    border-radius: 10px !important;
+    padding: 10px 24px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px;
+    min-height: 44px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    text-transform: none !important;
+}
+
+.intro-nav-footer .q-btn--standard.bg-primary {
+    background: linear-gradient(135deg, #2196F3, #1976D2) !important;
+    box-shadow: 0 4px 14px rgba(33, 150, 243, 0.35);
+}
+
+.intro-nav-footer .q-btn--standard.bg-primary:hover {
+    background: linear-gradient(135deg, #42A5F5, #2196F3) !important;
+    box-shadow: 0 6px 20px rgba(33, 150, 243, 0.5);
+    transform: translateY(-1px);
+}
+
+.intro-nav-footer .q-btn--outline {
+    border: 1.5px solid rgba(255, 255, 255, 0.2) !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.intro-nav-footer .q-btn--outline:hover {
+    border-color: rgba(255, 255, 255, 0.4) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    transform: translateY(-1px);
+}
+
+.intro-nav-footer .q-btn--standard.bg-positive {
+    background: linear-gradient(135deg, #4CAF50, #2E7D32) !important;
+    box-shadow: 0 4px 14px rgba(76, 175, 80, 0.35);
+}
+
+.intro-nav-footer .q-btn--standard.bg-positive:hover {
+    background: linear-gradient(135deg, #66BB6A, #4CAF50) !important;
+    box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
+    transform: translateY(-1px);
+}
+
+.intro-nav-footer .q-btn .q-focus-helper {
+    display: none !important;
+}
+
+@media (max-width: 640px) {
+    .intro-nav-footer {
+        padding: 12px 14px;
+    }
+
+    .intro-home-shell {
+        padding-bottom: 104px !important;
+    }
+
+    .intro-nav-footer .q-btn {
+        padding: 8px 14px !important;
+        font-size: 14px !important;
+    }
+}
 </style>
 """

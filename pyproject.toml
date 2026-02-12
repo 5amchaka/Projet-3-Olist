@@ -8,6 +8,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "kaggle>=1.6",
     "python-dotenv>=1.0",
+    "colorama>=0.4.6",
 ]
 
 [project.optional-dependencies]

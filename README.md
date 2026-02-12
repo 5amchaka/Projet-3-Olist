@@ -1,166 +1,202 @@
-# Olist ETL Pipeline
+# Olist Analytics Platform
 
-Pipeline ETL pour le dataset Brazilian E-commerce (Olist) : ~100k commandes 2016-2018.
+Plateforme d'analyse du dataset Olist (Brazilian E-commerce, ~100k commandes 2016-2018) :
+pipeline ETL Python, data warehouse SQLite en star schema, dashboard NiceGUI et cours SQL interactif.
 
-Telecharge les 9 CSV depuis Kaggle, nettoie les donnees, et les charge dans un data warehouse SQLite (star schema).
+Le point d'entree principal est le launcher (`launch.py`), qui orchestre setup, checks, download, ETL et lancement du dashboard.
 
-## Quickstart
+## Lancement rapide (recommande)
 
-> **Alternative interactive** : ouvrir [notebooks/quickstart.ipynb](notebooks/quickstart.ipynb) pour un demarrage guide cellule par cellule.
+### Parcours A: automatise (one-command)
 
-### 1. Installation
+```bash
+uv venv && uv sync --all-extras
+make launch
+```
+
+`make launch` appelle `uv run python launch.py --theme simplon` et gere automatiquement:
+- validation de l'environnement
+- health checks
+- download CSV si necessaire
+- ETL si necessaire (skip intelligent si la DB est deja a jour)
+- lancement du dashboard
+
+Par defaut, `make launch` ne lance pas les tests.
+
+Options courantes:
+
+```bash
+make launch-force
+make launch-quick
+make launch-with-tests
+make launch-with-all-tests
+make launch-with-verify
+make health
+```
+
+Exemples en CLI direct:
+
+```bash
+uv run python launch.py --theme simplon --force
+uv run python launch.py --port 8888 --no-browser
+uv run python launch.py --no-splash --run-tests
+uv run python launch.py --health-check-only
+```
+
+### Parcours B: manuel (etape par etape)
+
+1. Installation
 
 ```bash
 uv venv && uv sync
 ```
 
-### 2. Configuration Kaggle
-
-Copier `.env.example` en `.env` et renseigner les credentials :
-
-```bash
-cp .env.example .env
-# Editer .env avec votre KAGGLE_USERNAME et KAGGLE_KEY
-```
-
-### 3. Telecharger les donnees
-
-```bash
-bash scripts/download_dataset.sh
-```
-
-### 4. Lancer le pipeline ETL
-
-```bash
-uv run python -m src.etl
-```
-
-La base SQLite sera creee dans `data/database/olist_dw.db`.
-
-### 5. Tests
-
-```bash
-uv run python -m pytest tests/ -v
-```
-
-### 6. Lancer le dashboard
-
-Installer les dependances dashboard puis lancer NiceGUI :
+Extras selon besoin:
 
 ```bash
 uv sync --extra dashboard
-uv run --extra dashboard python -m src.dashboard
+uv sync --extra dev
+uv sync --extra notebook
 ```
 
-Le dashboard est disponible sur `http://localhost:8080`.
-Le port peut etre surcharge via `DASHBOARD_PORT` :
+2. Configuration (`.env` optionnel)
 
 ```bash
-DASHBOARD_PORT=8090 uv run --extra dashboard python -m src.dashboard
+cp .env.example .env
 ```
 
-Par defaut, NiceGUI n'essaie pas d'ouvrir automatiquement un navigateur (utile en SSH/WSL/headless).
-Pour forcer l'ouverture auto :
+Variables utiles:
+- `DASHBOARD_PORT` (defaut: `8080`)
+- `DASHBOARD_SHOW_BROWSER` (si absent: navigateur non ouvert automatiquement)
+
+Note Kaggle:
+- `make download` / `scripts/download_dataset.sh` attendent `KAGGLE_USERNAME` et `KAGGLE_KEY`.
+- le launcher (`make launch`) applique un fallback pour le dataset public si credentials absentes.
+
+3. Telecharger les donnees
 
 ```bash
-DASHBOARD_SHOW_BROWSER=1 uv run --extra dashboard python -m src.dashboard
-```
-
-### Commandes rapides (Makefile)
-
-```bash
-make install
 make download
-make etl
-make dashboard
-make test
-make test-integration
+# ou: bash scripts/download_dataset.sh
 ```
 
-### Mode Cours SQL Interactif
+4. Lancer le pipeline ETL
 
-Le mode présentation a été transformé en un **cours SQL avancé dynamique** avec exercices interactifs.
+```bash
+make etl
+```
 
-**Accès** : Bouton "Présentation" dans le header du dashboard ou `http://localhost:8080/presentation`
+La base SQLite est creee dans `data/database/olist_dw.db`.
 
-#### Structure du cours
-
-**Introduction DWH** (6 slides, ~8 min) :
-1. Contexte Olist (dataset, problèmes CSV)
-2. Processus ETL (schémas Mermaid)
-3. Schéma en étoile (ERD interactif)
-4. Décisions architecturales (grain, index, vues)
-5. Avant/Après (Pandas vs SQL, 25x plus rapide)
-6. Justification business (ROI, métriques)
-
-**5 modules SQL** (15 leçons, ~160 min total) :
-
-| Module | Leçons | Concepts | Durée |
-|--------|--------|----------|-------|
-| **1. Fondamentaux** | 3 | SELECT, JOIN, GROUP BY | 25 min |
-| **2. Window Functions** | 3 | LAG, ROW_NUMBER, NTILE | 30 min |
-| **3. CTEs Avancées** | 3 | WITH, MATERIALIZED, chaînage | 35 min |
-| **4. Cas Complexes** | 3 | Self-join, scoring, cohortes | 40 min |
-| **5. Optimisation** | 3 | Index, EXPLAIN, performance | 30 min |
-
-#### Fonctionnalités interactives
-
-- **Éditeur SQL en ligne** : Exécution READ-ONLY avec validation automatique
-- **Annotations sur le code** : Hover tooltips + panels détails pour 30+ concepts SQL
-- **9 exercices progressifs** : Beginner → Advanced avec validateurs et feedback
-- **Liens exploration** : Chaque leçon connectée à une page du dashboard
-- **Visualisation EXPLAIN** : Animation step-by-step des plans d'exécution
-
-#### Navigation
-
-- **Sidebar** : Accordéons 5 modules avec highlight leçon courante
-- **Progress bar** : % complétion globale (X/15 leçons)
-- **Footer** : Boutons Précédent / Suivant avec edge cases
-
-#### Lancer le cours
+5. Lancer le dashboard
 
 ```bash
 make dashboard
-# Puis accéder à http://localhost:8080/presentation
 ```
 
-## Structure
+Acces:
+- `http://localhost:8080`
+- `http://localhost:8080/presentation` (cours SQL)
 
+Exemples:
+
+```bash
+DASHBOARD_PORT=8090 make dashboard
+DASHBOARD_SHOW_BROWSER=1 make dashboard
 ```
-data/raw/           # CSV bruts depuis Kaggle
-data/processed/     # Donnees intermediaires
-data/staging/       # Staging
-data/database/      # Fichier SQLite (data warehouse)
-src/etl/            # Pipeline ETL (extract, transform, load)
-src/dashboard/      # Dashboard NiceGUI (pages analytiques SQL)
-src/database/       # Connexion et modeles
-sql/                # DDL + requetes SQL
-scripts/            # Scripts utilitaires (download, etc.)
-notebooks/          # Exploration, nettoyage, chargement, verification
-tests/              # Tests unitaires et d'integration
-docs/               # Documentation du schema
+
+## Commandes utiles (Makefile)
+
+| Commande | Description |
+|----------|-------------|
+| `make install` | Creer le venv + installer les dependances de base |
+| `make download` | Telecharger et valider les 9 CSV Olist |
+| `make etl` | Executer le pipeline ETL complet |
+| `make dashboard` | Lancer le dashboard NiceGUI |
+| `make launch` | Launcher automatise (one-command) |
+| `make launch-force` | Launcher avec rebuild complet |
+| `make launch-quick` | Launcher en mode rapide (skip si possible) |
+| `make launch-with-tests` | Launcher avec tests unitaires |
+| `make launch-with-all-tests` | Launcher avec tous les tests |
+| `make launch-with-verify` | Launcher avec verification CSV (csvkit) |
+| `make health` | Diagnostic systeme |
+| `make test` | Tests unitaires (hors integration) |
+| `make test-integration` | Tests d'integrite CSV <-> DW |
+| `make test-all` | Tous les tests |
+| `make verify` | Verification CSV via csvkit |
+
+## Tests et CI
+
+- `make test`: execute les tests hors `@pytest.mark.integration`.
+- `make test-integration`: execute les tests d'integrite pipeline (`tests/test_pipeline_integrity.py`).
+- `make test-all`: execute tous les tests, y compris les tests dashboard marques `integration`.
+- `make verify`: verification independente de l'analyse CSV via `csvkit`.
+
+CI (`.github/workflows/ci.yml`):
+- `uv sync --all-extras`
+- `pytest -m "not integration" --cov=src --cov-report=term-missing`
+
+## Cours SQL interactif
+
+Le dashboard inclut un cours SQL avance:
+- 5 modules
+- 15 lecons
+- 9 exercices progressifs
+- environ 160 min
+
+Acces:
+- `http://localhost:8080/presentation`
+
+Fonctionnalites:
+- editeur SQL (read-only executeur securise)
+- annotations de concepts SQL
+- visualisation `EXPLAIN QUERY PLAN`
+
+Details:
+- [docs/dashboard.md](docs/dashboard.md)
+- [sql/dashboard/README.md](sql/dashboard/README.md)
+
+## Structure du projet
+
+```text
+launch.py             # Point d'entree CLI (launcher automatise)
+src/etl/              # Pipeline ETL (extract, transform, load)
+src/dashboard/        # Dashboard NiceGUI (analytics + cours SQL)
+src/database/         # Connexion SQLAlchemy et modeles
+src/launcher/         # Orchestration (download -> ETL -> tests -> dashboard)
+src/config.py         # Configuration centralisee (chemins, CSV)
+sql/                  # DDL star schema, vues, requetes dashboard, exercices
+scripts/              # Scripts utilitaires (download, verification CSV)
+notebooks/            # Exploration et tracabilite CSV <-> BDD
+tests/                # Tests unitaires et integration
+docs/                 # Documentation technique
+data/raw/             # CSV bruts depuis Kaggle
+data/database/        # SQLite data warehouse (olist_dw.db)
 ```
 
 ## Documentation
 
 | Document | Contenu |
 |----------|---------|
-| [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) | Choix de modelisation : pourquoi et comment les 9 CSV deviennent 6 tables |
-| [docs/exploration_analysis.md](docs/exploration_analysis.md) | Analyse empirique des donnees brutes : chiffres cles, constats, justifications |
-| [docs/data_dictionary.md](docs/data_dictionary.md) | Dictionnaire de donnees : colonnes, types SQLite, grain et semantics metier |
-| [docs/dashboard.md](docs/dashboard.md) | Guide dashboard : architecture, pages, lancement, mode presentation |
-| [sql/dashboard/README.md](sql/dashboard/README.md) | Inventaire des requetes SQL utilisees par les pages du dashboard |
-| [notebooks/quickstart.ipynb](notebooks/quickstart.ipynb) | Demarrage rapide : telecharger, lancer le pipeline, verifier la base |
-| [notebooks/exploration_csv.ipynb](notebooks/exploration_csv.ipynb) | Notebook d'exploration : profils, cardinalites, visualisations par dataset |
-| [notebooks/comparaison_csv_bdd.ipynb](notebooks/comparaison_csv_bdd.ipynb) | Tracabilite CSV → BDD : volumetrie, distributions avant/apres, perdu/gagne |
+| [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) | Choix de modelisation: 9 CSV -> 6 tables |
+| [docs/exploration_analysis.md](docs/exploration_analysis.md) | Analyse empirique des donnees brutes |
+| [docs/data_dictionary.md](docs/data_dictionary.md) | Dictionnaire de donnees: colonnes, types, semantique |
+| [docs/dashboard.md](docs/dashboard.md) | Architecture dashboard, pages, cours SQL |
+| [docs/launcher.md](docs/launcher.md) | Launcher: architecture, options, workflows |
+| [docs/Analyse_Transformations_Olist_DW.md](docs/Analyse_Transformations_Olist_DW.md) | Analyse des transformations ETL |
+| [sql/dashboard/README.md](sql/dashboard/README.md) | Inventaire des requetes SQL du dashboard |
+| [notebooks/exploration_csv.ipynb](notebooks/exploration_csv.ipynb) | Exploration: profils, cardinalites, visualisations |
+| [notebooks/comparaison_csv_bdd.ipynb](notebooks/comparaison_csv_bdd.ipynb) | Tracabilite CSV -> BDD: volumetrie, distributions |
 
 ## Star Schema
 
-Le data warehouse utilise un schema en etoile :
-- **5 dimensions** : dates, geolocation, customers, sellers, products
-- **1 table de faits** : fact_orders (grain = article commande)
+Le data warehouse utilise un schema en etoile:
+- 5 dimensions: `dim_dates`, `dim_geolocation`, `dim_customers`, `dim_sellers`, `dim_products`
+- 1 table de faits: `fact_orders` (grain = article commande)
 
-Voir [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) pour le detail et [docs/exploration_analysis.md](docs/exploration_analysis.md) pour les constats empiriques qui motivent ces choix.
+Voir:
+- [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md)
+- [docs/exploration_analysis.md](docs/exploration_analysis.md)
 
 ## Datasets
 
@@ -174,32 +210,24 @@ Voir [docs/csv_to_star_schema.md](docs/csv_to_star_schema.md) pour le detail et 
 | order_reviews | 99k | Avis clients |
 | products | 32k | Catalogue produits |
 | sellers | 3k | Vendeurs |
-| category_translation | 71 | Traduction des categories PT->EN |
-
-## Operations
-
-- Refresh complet de l'entrepot (reconstruction des tables) :
-
-```bash
-make etl
-```
-
-- Verification rapide apres refresh :
-
-```bash
-make test
-make test-integration
-```
+| category_translation | 71 | Traduction des categories PT -> EN |
 
 ## Troubleshooting
 
 - `KAGGLE_USERNAME and KAGGLE_KEY must be set`
-  - Verifier `.env` (copie de `.env.example`) et relancer `make download`.
+  - Ce message vient de `make download` / `scripts/download_dataset.sh`.
+  - Renseigner `.env` puis relancer `make download`, ou passer par `make launch` (fallback dataset public).
 - `kaggle CLI not found`
-  - Installer les dependances avec `make install`.
-- `Fichier introuvable : data/raw/...`
-  - Les CSV ne sont pas presents. Relancer `make download`.
+  - Reinstaller les dependances: `make install` ou `uv sync --all-extras`.
+- `Fichier introuvable: data/raw/...`
+  - CSV absents: relancer `make download` ou `make launch-force`.
 - Base SQLite absente pour les tests d'integration
   - Executer d'abord `make etl`, puis `make test-integration`.
+- `Address already in use` / port occupe
+  - Changer le port: `uv run python launch.py --port 8888` ou `DASHBOARD_PORT=8888 make dashboard`.
+- Splash screen ne s'affiche pas
+  - En headless/WSL sans `DISPLAY`, utiliser `--no-splash`.
+- Le navigateur ne s'ouvre pas automatiquement
+  - Ouvrir l'URL manuellement, ou forcer `DASHBOARD_SHOW_BROWSER=1`.
 - `PHASE X: ... failed: ...`
-  - Le pipeline remonte maintenant l'etape en echec (extract/transform/build/load). Lire les logs juste au-dessus pour la cause racine.
+  - Le pipeline remonte maintenant l'etape en echec (extract/transform/build/load). Lire les logs juste au-dessus.

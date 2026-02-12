@@ -1,12 +1,14 @@
 """
 Introduction détaillée du Data Warehouse Olist.
 
-5 slides :
+7 slides :
 1. Contexte Olist (dataset, volumétrie exacte)
 2. Processus ETL (5 transformations clés avec justifications empiriques)
 3. Schéma en étoile (cardinalités exactes, grain article explicité)
-4. Décisions architecturales (vues VIRTUELLES, pas matérialisées)
-5. Validation & Qualité (concordance 100%, anomalies documentées, transition cours)
+4. Décisions architecturales (1/3) : Grain & Index
+5. Décisions architecturales (2/3) : Vues & Clés
+6. Décisions architecturales (3/3) : Choix SQLite
+7. Validation & Qualité (concordance 100%, anomalies documentées, transition cours)
 """
 
 from nicegui import ui
@@ -17,7 +19,7 @@ def render_intro_carousel():
 
     # État de navigation
     current_slide = {'index': 0}
-    total_slides = 5
+    total_slides = 7
 
     # Container principal
     slide_container = ui.column().classes('w-full')
@@ -28,12 +30,26 @@ def render_intro_carousel():
 
         with slide_container:
             # Progress indicator
-            with ui.row().classes('w-full justify-center mb-4'):
-                for i in range(total_slides):
-                    if i == index:
-                        ui.label('●').classes('text-green-400 text-2xl')
-                    else:
-                        ui.label('○').classes('text-gray-600 text-2xl')
+            with ui.column().classes('w-full items-center mb-6'):
+                # Dots
+                with ui.row().classes('gap-2'):
+                    for i in range(total_slides):
+                        if i == index:
+                            ui.label('●').classes('text-green-500 text-3xl')
+                        else:
+                            ui.label('○').classes('text-gray-600 text-3xl')
+
+                # Indicateur textuel
+                slide_titles = [
+                    "Le Dataset Olist",
+                    "Le Processus ETL",
+                    "Schéma en Étoile",
+                    "Décisions Architecturales (1/3)",
+                    "Décisions Architecturales (2/3)",
+                    "Décisions Architecturales (3/3)",
+                    "Validation & Qualité"
+                ]
+                ui.label(f"{index + 1}/7 — {slide_titles[index]}").classes('text-xs text-gray-500 mt-1')
 
             # Contenu du slide
             with ui.card().classes('w-full p-8 chapter-enter'):
@@ -47,11 +63,15 @@ def render_intro_carousel():
                     render_slide_4()
                 elif index == 4:
                     render_slide_5()
+                elif index == 5:
+                    render_slide_6()
+                elif index == 6:
+                    render_slide_7()
 
             # Navigation
             with ui.row().classes('w-full justify-between mt-4'):
                 if index > 0:
-                    ui.button('← Précédent', on_click=lambda: navigate(-1)).props('outline')
+                    ui.button('← Précédent', on_click=lambda: navigate(-1)).props('outline color=primary')
                 else:
                     ui.label('')  # Spacer
 
@@ -75,7 +95,8 @@ def render_intro_carousel():
 
 def render_slide_1():
     """Slide 1 : Contexte Olist."""
-    ui.label("🎯 Le Dataset Olist").classes('text-4xl font-bold mb-6')
+    ui.label("🎯 Le Dataset Olist").classes('text-4xl font-bold mb-2')
+    ui.label("E-commerce brésilien : 1.5M lignes brutes sur 99k commandes").classes('text-2xl text-gray-400 mb-8')
 
     ui.markdown("""
 ## Dataset E-commerce Brésilien (2016-2018)
@@ -111,14 +132,19 @@ def render_slide_1():
 7. `olist_order_payments_dataset.csv` (103 886 lignes)
 8. `olist_geolocation_dataset.csv` (1 000 163 lignes!)
 9. `product_category_name_translation.csv` (71 lignes)
+""").classes('text-gray-300')
 
-➡️ **Objectif** : Construire un Data Warehouse analytique optimisé
+    # Encadré de conclusion
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4 rounded mt-8'):
+        ui.markdown("""
+➡️ **À retenir** : Le dataset Olist contient 1.5M lignes brutes (9 CSV) couvrant 99k commandes, 96k clients et 3k vendeurs sur 24 mois de e-commerce brésilien.
 """).classes('text-gray-300')
 
 
 def render_slide_2():
     """Slide 2 : Processus ETL."""
-    ui.label("⚙️ Le Processus ETL").classes('text-4xl font-bold mb-6')
+    ui.label("⚙️ Le Processus ETL").classes('text-4xl font-bold mb-2')
+    ui.label("De 1.5M lignes brutes à un DWH optimisé en 3 étapes").classes('text-2xl text-gray-400 mb-8')
 
     ui.markdown("""
 Notre pipeline de transformation suit les **3 étapes classiques** de l'ingénierie des données.
@@ -150,11 +176,11 @@ graph LR
 Lecture des **9 fichiers CSV** sources avec Pandas (1.5M lignes brutes).
 """).classes('text-gray-300 mb-2')
 
+    ui.label("🐍 Python").classes('text-sm font-semibold mb-2')
     with ui.card().classes('w-full bg-gray-900 p-4 mb-8'):
-        code_extract = """orders_df = pd.read_csv("olist_orders_dataset.csv")      # 99 441 lignes
+        ui.code("""orders_df = pd.read_csv("olist_orders_dataset.csv")      # 99 441 lignes
 items_df = pd.read_csv("olist_order_items_dataset.csv")  # 112 650 lignes
-# ... 7 autres CSV"""
-        ui.html(f'<pre class="font-mono text-sm" style="margin: 0; color: #e0e0e0;">{code_extract}</pre>')
+# ... 7 autres CSV""", language='python').classes('text-sm')
 
     # ── TRANSFORM ──
     ui.label("2. Transform : 5 transformations clés").classes('text-2xl font-bold mb-4 mt-8')
@@ -168,9 +194,9 @@ items_df = pd.read_csv("olist_order_items_dataset.csv")  # 112 650 lignes
 **Résultat** : 1 000 163 → **19 015 lignes**, précision ~2km
 """).classes('text-gray-300 mb-4')
 
-        ui.label("💻 Code Python").classes('text-sm font-semibold mb-2')
+        ui.label("🐍 Python").classes('text-sm font-semibold mb-2')
         with ui.card().classes('w-full bg-gray-900 p-4'):
-            code_python = """def _safe_mode(x):
+            ui.code("""def _safe_mode(x):
     '''Mode sécurisé évitant IndexError sur séries vides.'''
     mode = x.mode()
     return mode.iloc[0] if not mode.empty else (x.iloc[0] if len(x) > 0 else None)
@@ -181,8 +207,7 @@ def clean_geolocation(df):
         'lng': 'median',
         'city': _safe_mode,
         'state': _safe_mode
-    })"""
-            ui.html(f'<pre class="font-mono text-xs" style="margin: 0; color: #e0e0e0; overflow-x: auto; max-width: 100%;">{code_python}</pre>')
+    })""", language='python').classes('text-xs')
 
     # Transformation 2 : aggregate_payments
     with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
@@ -229,8 +254,9 @@ def clean_geolocation(df):
 Création du **schéma en étoile** (1 fait + 5 dimensions) et des **index critiques** pour analyses interactives.
 """).classes('text-gray-300 mb-4')
 
+    ui.label("💻 SQL").classes('text-sm font-semibold mb-2')
     with ui.card().classes('w-full bg-gray-900 p-4 mb-6'):
-        code_load = """# Schéma en étoile : 1 fait + 5 dimensions
+        ui.code("""# Schéma en étoile : 1 fait + 5 dimensions
 fact_orders.to_sql('fact_orders', conn, index=False)
 dim_customers.to_sql('dim_customers', conn, index=False)
 # ... 4 autres dimensions
@@ -243,20 +269,19 @@ conn.execute("CREATE INDEX idx_fact_seller_key ON fact_orders(seller_key)")
 conn.execute("CREATE INDEX idx_fact_product_key ON fact_orders(product_key)")
 conn.execute("CREATE INDEX idx_fact_order_status ON fact_orders(order_status)")
 conn.execute("CREATE INDEX idx_fact_customer_geo ON fact_orders(customer_geo_key)")
-conn.execute("CREATE INDEX idx_fact_seller_geo ON fact_orders(seller_geo_key)")"""
-        ui.html(f'<pre class="font-mono text-sm" style="margin: 0; color: #e0e0e0; overflow-x: auto; max-width: 100%;">{code_load}</pre>')
+conn.execute("CREATE INDEX idx_fact_seller_geo ON fact_orders(seller_geo_key)")""", language='python').classes('text-sm')
 
-    # Résultat final
-    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4'):
-        ui.label("✅ Résultat").classes('text-lg font-bold mb-2')
+    # Encadré de conclusion
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4 rounded mt-8'):
         ui.markdown("""
-**1 550 871 lignes brutes → 267 867 lignes modélisées** (6 tables du DWH)
+➡️ **À retenir** : Le pipeline ETL transforme 1.5M lignes brutes en 268k lignes modélisées via 5 transformations clés : déduplication geolocation (1M→19k), agrégation paiements, résolution reviews multiples, clés surrogate et métriques de livraison.
 """).classes('text-gray-300')
 
 
 def render_slide_3():
     """Slide 3 : Schéma en étoile."""
-    ui.label("⭐ Schéma en Étoile").classes('text-4xl font-bold mb-6')
+    ui.label("⭐ Schéma en Étoile").classes('text-4xl font-bold mb-2')
+    ui.label("1 table de faits + 5 dimensions, grain article").classes('text-2xl text-gray-400 mb-8')
 
     ui.markdown("""
 ## Modélisation dimensionnelle : Le cœur du DWH
@@ -387,18 +412,22 @@ erDiagram
 - ✅ **Flexibilité** : Ajouter une dimension = 1 colonne FK dans fact
 """).classes('text-gray-300')
 
+    # Encadré de conclusion
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4 rounded mt-8'):
+        ui.markdown("""
+➡️ **À retenir** : Le schéma en étoile (1 fait + 5 dimensions) permet des jointures simples, des clés surrogate ultra-rapides (int vs UUID) et une flexibilité analytique maximale. Grain = 1 article par ligne (112k lignes).
+""").classes('text-gray-300')
+
 
 def render_slide_4():
-    """Slide 4 : Décisions architecturales."""
-    ui.label("🏗️ Décisions Architecturales").classes('text-4xl font-bold mb-6')
+    """Slide 4 : Décisions architecturales (1/3) - Grain & Index."""
+    ui.label("🏗️ Décisions Architecturales (1/3)").classes('text-4xl font-bold mb-2')
+    ui.label("Choix de granularité et optimisation des accès").classes('text-2xl text-gray-400 mb-8')
 
-    ui.markdown("""
-## Choix techniques qui rendent le DWH performant
-""").classes('text-gray-300 mb-8')
-
-    ui.markdown("""
-### 1. **Grain : Article vs Commande**
-
+    # Section 1 : Grain
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("1. Grain : Article vs Commande").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 **Option 1 - Grain "Commande"** (rejeté) :
 - ❌ Perd le détail par article
 - ❌ Prix agrégés (impossible de savoir quel produit coûte combien)
@@ -410,24 +439,13 @@ def render_slide_4():
 - ✅ Analyses produit facilitées
 
 ➡️ **Décision** : 1 ligne = 1 article (112k lignes dans fact_orders)
-""").classes('text-gray-300 mb-8')
+""").classes('text-gray-300')
 
-    ui.markdown("""
-### 2. **Index Stratégiques**
-
+    # Section 2 : Index
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("2. Index Stratégiques").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 Les index accélèrent les recherches de O(n) → O(log n).
-
-**Index créés** :
-```sql
-CREATE INDEX idx_fact_order_id ON fact_orders(order_id);
-CREATE INDEX idx_fact_date_key ON fact_orders(date_key);
-CREATE INDEX idx_fact_customer_key ON fact_orders(customer_key);
-CREATE INDEX idx_fact_seller_key ON fact_orders(seller_key);
-CREATE INDEX idx_fact_product_key ON fact_orders(product_key);
-CREATE INDEX idx_fact_order_status ON fact_orders(order_status);
-CREATE INDEX idx_fact_customer_geo ON fact_orders(customer_geo_key);
-CREATE INDEX idx_fact_seller_geo ON fact_orders(seller_geo_key);
-```
 
 **Impact** :
 - Filtres sur `date_key` et `order_status` accélérés
@@ -435,20 +453,45 @@ CREATE INDEX idx_fact_seller_geo ON fact_orders(seller_geo_key);
 - Gains variables selon machine, cache SQLite et complexité de la requête
 
 **Principe** : Indexer les clés de jointure + colonnes de filtrage fréquentes.
-""").classes('text-gray-300 mb-8')
+""").classes('text-gray-300 mb-4')
 
+        ui.label("💻 SQL").classes('text-sm font-semibold mb-2')
+        with ui.card().classes('w-full bg-gray-900 p-4'):
+            ui.code("""CREATE INDEX idx_fact_order_id ON fact_orders(order_id);
+CREATE INDEX idx_fact_date_key ON fact_orders(date_key);
+CREATE INDEX idx_fact_customer_key ON fact_orders(customer_key);
+CREATE INDEX idx_fact_seller_key ON fact_orders(seller_key);
+CREATE INDEX idx_fact_product_key ON fact_orders(product_key);
+CREATE INDEX idx_fact_order_status ON fact_orders(order_status);
+CREATE INDEX idx_fact_customer_geo ON fact_orders(customer_geo_key);
+CREATE INDEX idx_fact_seller_geo ON fact_orders(seller_geo_key);""", language='sql').classes('text-xs')
+
+    # Encadré de conclusion
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4 rounded mt-8'):
+        ui.markdown("""
+➡️ **À retenir** : Le grain article conserve le détail maximal tout en permettant l'agrégation au niveau commande. Les 8 index stratégiques accélèrent les jointures et les filtres fréquents.
+""").classes('text-gray-300')
+
+def render_slide_5():
+    """Slide 5 : Décisions architecturales (2/3) - Vues & Clés."""
+    ui.label("🏗️ Décisions Architecturales (2/3)").classes('text-4xl font-bold mb-2')
+    ui.label("Abstraction analytique et optimisation du stockage").classes('text-2xl text-gray-400 mb-8')
+
+    # Section 3 : Vues
     ui.markdown("""
-### 3. **Vues Analytiques (virtuelles, pas matérialisées)**
+### Vues Analytiques (virtuelles, pas matérialisées)
 
 ⚠️ **SQLite ne supporte PAS les vues matérialisées** (contrairement à PostgreSQL)
 
 Les vues créées sont **virtuelles** : recalculées à chaque SELECT, pas de cache physique.
+""").classes('text-gray-300 mb-6')
 
-**3 vues créées** :
-
-#### 📊 `v_monthly_sales` : Ventes mensuelles agrégées
-```sql
-CREATE VIEW v_monthly_sales AS
+    # Vue 1 : v_monthly_sales
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("📊 v_monthly_sales : Ventes mensuelles agrégées").classes('text-xl font-bold mb-3')
+        ui.label("💻 SQL").classes('text-sm font-semibold mb-2')
+        with ui.card().classes('w-full bg-gray-900 p-4'):
+            ui.code("""CREATE VIEW v_monthly_sales AS
 SELECT
     d.year,
     d.month,
@@ -459,12 +502,14 @@ SELECT
 FROM fact_orders f
 JOIN dim_dates d ON f.date_key = d.date_key
 WHERE f.order_status = 'delivered'
-GROUP BY d.year, d.month;
-```
+GROUP BY d.year, d.month;""", language='sql').classes('text-xs')
 
-#### 👥 `v_customer_cohorts` : Clients avec mois de première commande
-```sql
-CREATE VIEW v_customer_cohorts AS
+    # Vue 2 : v_customer_cohorts
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("👥 v_customer_cohorts : Clients avec mois de première commande").classes('text-xl font-bold mb-3')
+        ui.label("💻 SQL").classes('text-sm font-semibold mb-2')
+        with ui.card().classes('w-full bg-gray-900 p-4'):
+            ui.code("""CREATE VIEW v_customer_cohorts AS
 SELECT
     c.customer_unique_id,
     MIN(f.date_key / 100) AS first_month,
@@ -475,20 +520,23 @@ FROM fact_orders f
 JOIN dim_customers c ON f.customer_key = c.customer_key
 WHERE f.order_status = 'delivered'
   AND f.date_key IS NOT NULL
-GROUP BY c.customer_unique_id;
-```
+GROUP BY c.customer_unique_id;""", language='sql').classes('text-xs')
 
-#### 📦 `v_orders_enriched` : Commandes avec toutes dimensions joinées
+    # Vue 3 : v_orders_enriched
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("📦 v_orders_enriched : Commandes avec toutes dimensions joinées").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 Vue dénormalisée pour analyses ad-hoc sans réécrire les JOINs.
 
 **Avantage** : Requêtes complexes deviennent `SELECT * FROM v_monthly_sales`.
 
 **Limite** : Pas de cache. Pour matérialiser : `CREATE TABLE AS SELECT ...` (manuelle).
-""").classes('text-gray-300 mb-8')
+""").classes('text-gray-300')
 
-    ui.markdown("""
-### 4. **Clés Surrogate vs Clés Naturelles**
-
+    # Section 4 : Clés Surrogate
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("4. Clés Surrogate vs Clés Naturelles").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 **Clé naturelle** : `customer_id` (string UUID 32 chars, 32 bytes)
 
 **Clé surrogate** : `customer_key` (integer auto-incrémenté, 4 bytes)
@@ -499,31 +547,62 @@ Vue dénormalisée pour analyses ad-hoc sans réécrire les JOINs.
 - ✅ **Index plus compacts** (B-Tree sur int = optimal)
 
 ➡️ **Décision** : Toutes les FK utilisent des clés surrogate (customer_key, seller_key, product_key).
-""").classes('text-gray-300 mb-8')
+""").classes('text-gray-300')
+
+    # Encadré de conclusion
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4 rounded mt-8'):
+        ui.markdown("""
+➡️ **À retenir** : Les 3 vues virtuelles (v_monthly_sales, v_customer_cohorts, v_orders_enriched) simplifient les requêtes complexes. Les clés surrogate (int 4 bytes) sont 8× plus efficaces que les UUID (32 bytes).
+""").classes('text-gray-300')
+
+def render_slide_6():
+    """Slide 6 : Décisions architecturales (3/3) - Choix SQLite."""
+    ui.label("🏗️ Décisions Architecturales (3/3)").classes('text-4xl font-bold mb-2')
+    ui.label("Pourquoi SQLite pour un DWH analytique mono-utilisateur").classes('text-2xl text-gray-400 mb-8')
 
     ui.markdown("""
-### 5. **SQLite vs PostgreSQL**
+### SQLite vs PostgreSQL
 
 Pourquoi SQLite pour un DWH ?
+""").classes('text-gray-300 mb-6')
 
-**Avantages** :
+    # Avantages SQLite
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-6 mb-6'):
+        ui.label("✅ Avantages SQLite").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 - ✅ **Zero-config** : 1 fichier .db, pas de serveur
 - ✅ **Portable** : Copier le .db = copier tout le DWH
 - ✅ **Rapide** : Window functions performantes, optimiseur correct
 - ✅ **Suffisant** : volume actuel du DWH = ~268k lignes (dont 112k dans fact_orders)
+""").classes('text-gray-300')
 
-**Limites** (OK pour notre use case) :
+    # Limites SQLite
+    with ui.card().classes('w-full bg-orange-900/20 border-l-4 border-orange-500 p-6 mb-6'):
+        ui.label("⚠️ Limites SQLite (OK pour notre use case)").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 - ❌ Pas de concurrence écriture (read-only en prod = OK)
 - ❌ Pas de réplication (backup fichier = OK)
 - ❌ Pas de partitionnement (pas nécessaire à 112k lignes)
+""").classes('text-gray-300')
 
-➡️ **Décision** : SQLite est idéal pour un DWH analytique mono-utilisateur.
+    # Décision finale
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-6 mb-6'):
+        ui.label("📌 Décision").classes('text-xl font-bold mb-3')
+        ui.markdown("""
+SQLite est idéal pour un DWH analytique mono-utilisateur de notre volumétrie (268k lignes).
+""").classes('text-gray-300')
+
+    # Encadré de conclusion
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4 rounded mt-8'):
+        ui.markdown("""
+➡️ **À retenir** : SQLite est idéal pour notre DWH analytique de 268k lignes : zero-config, portable, performant, et suffisant pour un usage mono-utilisateur en lecture.
 """).classes('text-gray-300')
 
 
-def render_slide_5():
-    """Slide 5 : Validation & Qualité des Données."""
-    ui.label("✅ Validation & Qualité des Données").classes('text-4xl font-bold mb-6')
+def render_slide_7():
+    """Slide 7 : Validation & Qualité des Données."""
+    ui.label("✅ Validation & Qualité").classes('text-4xl font-bold mb-2')
+    ui.label("Concordance 100% sur 267k lignes modélisées").classes('text-2xl text-gray-400 mb-8')
 
     ui.markdown("""
 ## Intégrité des transformations CSV → DWH
@@ -551,43 +630,53 @@ La validation systématique garantit que les transformations ETL n'ont introduit
 ### 🚨 Anomalies identifiées et documentées
 """).classes('text-gray-300 mb-6')
 
-    ui.markdown("""
-#### 1. **775 commandes sans articles (0.78%)**
+    # Anomalie 1
+    with ui.card().classes('w-full bg-orange-900/20 border-l-4 border-orange-500 p-6 mb-6'):
+        ui.label("1. 775 commandes sans articles (0.78%)").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 - **Statuts** : unavailable (603), canceled (164), created (5), invoiced (2), shipped (1)
 - **Traitement** : Exclus de fact_orders car grain = article (cohérent avec modélisation)
 - **Impact** : Aucun sur analyses produit/vendeur (commandes sans transaction)
-""").classes('text-gray-300 mb-6')
+""").classes('text-gray-300')
 
-    ui.markdown("""
-#### 2. **285 entités sans geolocation**
+    # Anomalie 2
+    with ui.card().classes('w-full bg-orange-900/20 border-l-4 border-orange-500 p-6 mb-6'):
+        ui.label("2. 285 entités sans geolocation").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 - **Détail** : 278 clients (0.28%) + 7 vendeurs (0.23%)
 - **Cause** : Codes postaux absents de `olist_geolocation_dataset.csv`
 - **Traitement** : geo_key = NULL dans dim_customers/dim_sellers
 - **Impact** : Analyses géographiques possibles, entités NULL filtrables
-""").classes('text-gray-300 mb-6')
+""").classes('text-gray-300')
 
-    ui.markdown("""
-#### 3. **Précision géolocalisation ~2 km**
+    # Anomalie 3
+    with ui.card().classes('w-full bg-orange-900/20 border-l-4 border-orange-500 p-6 mb-6'):
+        ui.label("3. Précision géolocalisation ~2 km").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 - **Méthode** : Médiane lat/lng par code postal (1M → 19K lignes)
 - **Écart médian** : 0.02° lat, 0.018° lng ≈ 2 km
 - **Qualité** : OK pour analyses régionales/états, insuffisant pour géocodage précis
-""").classes('text-gray-300 mb-6')
+""").classes('text-gray-300')
 
-    ui.markdown("""
-#### 4. **Reviews manquantes dans fact_orders**
+    # Anomalie 4
+    with ui.card().classes('w-full bg-orange-900/20 border-l-4 border-orange-500 p-6 mb-8'):
+        ui.label("4. Reviews manquantes dans fact_orders").classes('text-xl font-bold mb-3')
+        ui.markdown("""
 - **Constat** : 942 lignes avec `review_score` NULL (0.84%), soit 749 commandes distinctes
 - **Cause** : Commandes non livrées ou reviews non soumises
 - **Traitement** : `review_score` conservé à NULL dans fact_orders
 - **Impact** : Exclues des calculs avg_review (`AVG` ignore les NULL)
-""").classes('text-gray-300 mb-8')
+""").classes('text-gray-300')
 
     ui.markdown("""
 ### 🧪 Script de validation indépendant
 
 **`verify_csv_analysis.sh`** : plusieurs dizaines d'assertions automatisées
+""").classes('text-gray-300 mb-4')
 
-```bash
-#!/bin/bash
+    ui.label("🖥️ Bash").classes('text-sm font-semibold mb-2')
+    with ui.card().classes('w-full bg-gray-900 p-4 mb-4'):
+        ui.code("""#!/bin/bash
 # Validation indépendante (CSV bruts -> SQLite temporaire)
 sum_price=$(query_db "
   SELECT PRINTF('%.2f', SUM(CAST(price AS REAL)))
@@ -599,9 +688,9 @@ no_items_total=$(query_db "
   SELECT COUNT(*) FROM olist_orders_dataset
   WHERE order_id NOT IN (SELECT DISTINCT order_id FROM olist_order_items_dataset);
 ")
-check_value "Commandes sans articles (total)" "775" "$no_items_total"
-```
+check_value "Commandes sans articles (total)" "775" "$no_items_total\"""", language='bash').classes('text-xs')
 
+    ui.markdown("""
 **Avantage** : Reproduit tous les chiffres clés via csvkit + SQLite temporaire → validation reproductible.
 """).classes('text-gray-300 mb-8')
 
@@ -619,16 +708,13 @@ check_value "Commandes sans articles (total)" "775" "$no_items_total"
 **Traitement** : Valeurs NULL conservées (pas d'imputation arbitraire), filtrables via `WHERE column IS NOT NULL`.
 """).classes('text-gray-300 mb-8')
 
-    ui.markdown("""
-## ✅ Conclusion : Qualité validée
+    # Encadré de conclusion
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4 rounded mt-8'):
+        ui.markdown("""
+➡️ **À retenir** : Intégrité 100% sur entités et montants financiers (13.6M R$ prix + 2.3M R$ fret). 0 perte de données sur transactions valides. Anomalies documentées (775 commandes sans articles = exclusion cohérente). Le DWH est fiable pour analyses métier et décisions stratégiques.
+""").classes('text-gray-300')
 
-- ✅ **Intégrité 100%** sur entités, montants financiers et volumes
-- ✅ **0 perte de données** sur transactions valides (grain article)
-- ✅ **Anomalies documentées** (775 commandes sans articles = exclusion cohérente)
-- ✅ **Validation continue** via script indépendant (plusieurs dizaines d'assertions)
-
-➡️ Le DWH est fiable pour analyses métier et décisions stratégiques
-""").classes('text-gray-300 mb-8')
+    ui.markdown("")  # Spacer
 
     ui.markdown("""
 ---

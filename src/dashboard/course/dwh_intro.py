@@ -1,13 +1,12 @@
 """
 Introduction détaillée du Data Warehouse Olist.
 
-6 slides :
+5 slides :
 1. Contexte Olist (dataset, volumétrie exacte)
 2. Processus ETL (5 transformations clés avec justifications empiriques)
 3. Schéma en étoile (cardinalités exactes, grain article explicité)
 4. Décisions architecturales (vues VIRTUELLES, pas matérialisées)
-5. Validation & Qualité (concordance 100%, anomalies documentées)
-6. Valeur business (9 métriques réelles, limites assumées, transition cours)
+5. Validation & Qualité (concordance 100%, anomalies documentées, transition cours)
 """
 
 from nicegui import ui
@@ -18,7 +17,7 @@ def render_intro_carousel():
 
     # État de navigation
     current_slide = {'index': 0}
-    total_slides = 6
+    total_slides = 5
 
     # Container principal
     slide_container = ui.column().classes('w-full')
@@ -48,8 +47,6 @@ def render_intro_carousel():
                     render_slide_4()
                 elif index == 4:
                     render_slide_5()
-                elif index == 5:
-                    render_slide_6()
 
             # Navigation
             with ui.row().classes('w-full justify-between mt-4'):
@@ -78,13 +75,15 @@ def render_intro_carousel():
 
 def render_slide_1():
     """Slide 1 : Contexte Olist."""
-    ui.label("🎯 Le Dataset Olist").classes('text-4xl font-bold mb-4')
+    ui.label("🎯 Le Dataset Olist").classes('text-4xl font-bold mb-6')
 
     ui.markdown("""
 ## Dataset E-commerce Brésilien (2016-2018)
 
 **Olist** est une plateforme e-commerce brésilienne qui connecte des milliers de vendeurs indépendants avec les plus grandes marketplaces du pays.
+""").classes('text-gray-300 mb-6')
 
+    ui.markdown("""
 ### Les chiffres clés
 - 🛒 **99 441 commandes** sur 24 mois (septembre 2016 - octobre 2018)
 - 👥 **96 096 clients** uniques (`customer_unique_id`)
@@ -92,12 +91,16 @@ def render_slide_1():
 - 📦 **32 951 produits** différents
 - 📍 **19 015 codes postaux** uniques (couvrant 27 états brésiliens)
 - 🌎 **27 états** brésiliens couverts
+""").classes('text-gray-300 mb-6')
 
+    ui.markdown("""
 ### Volumétrie totale des données sources
 **1 550 871 lignes brutes** réparties dans **9 fichiers CSV**, dont :
 - 77% (1M lignes) = geolocation à dédupliquer
 - 23% = données transactionnelles et référentielles
+""").classes('text-gray-300 mb-6')
 
+    ui.markdown("""
 ### Les 9 fichiers CSV sources
 1. `olist_orders_dataset.csv` (99 441 lignes)
 2. `olist_order_items_dataset.csv` (112 650 lignes)
@@ -115,16 +118,15 @@ def render_slide_1():
 
 def render_slide_2():
     """Slide 2 : Processus ETL."""
-    ui.label("⚙️ Le Processus ETL").classes('text-4xl font-bold mb-4')
+    ui.label("⚙️ Le Processus ETL").classes('text-4xl font-bold mb-6')
 
     ui.markdown("""
-## Extract → Transform → Load
+Notre pipeline de transformation suit les **3 étapes classiques** de l'ingénierie des données.
+""").classes('text-gray-300 mb-6')
 
-Notre pipeline de transformation suit les étapes classiques de l'ingénierie des données.
-""").classes('text-gray-300 mb-4')
-
-    # Schéma Mermaid du flow ETL
-    ui.mermaid("""
+    # Diagramme Mermaid dans une card avec fond
+    with ui.card().classes('w-full bg-gray-900/50 p-6 mb-8'):
+        ui.mermaid("""
 graph LR
     A[9 CSV Sources<br/>1 550 871 lignes] -->|Extract| B[DataFrames Pandas]
     B -->|Transform| C[Cleaning + Engineering]
@@ -140,26 +142,36 @@ graph LR
     C -->|latest_review| C3[Garder plus récent]
     C -->|surrogate_keys| C4[UUID → INTEGER]
     C -->|delivery_metrics| C5[Calculs temporels]
-""").classes('w-full mb-4')
+""").classes('w-full')
 
+    # ── EXTRACT ──
+    ui.label("1. Extract : Chargement des CSV").classes('text-2xl font-bold mb-4 mt-8')
     ui.markdown("""
-### 1. **Extract** : Chargement des CSV
-```python
-orders_df = pd.read_csv("olist_orders_dataset.csv")      # 99 441 lignes
+Lecture des **9 fichiers CSV** sources avec Pandas (1.5M lignes brutes).
+""").classes('text-gray-300 mb-2')
+
+    with ui.card().classes('w-full bg-gray-900 p-4 mb-8'):
+        code_extract = """orders_df = pd.read_csv("olist_orders_dataset.csv")      # 99 441 lignes
 items_df = pd.read_csv("olist_order_items_dataset.csv")  # 112 650 lignes
-# ... 7 autres CSV
-```
+# ... 7 autres CSV"""
+        ui.html(f'<pre class="font-mono text-sm" style="margin: 0; color: #e0e0e0;">{code_extract}</pre>')
 
-### 2. **Transform** : 5 transformations clés
+    # ── TRANSFORM ──
+    ui.label("2. Transform : 5 transformations clés").classes('text-2xl font-bold mb-4 mt-8')
 
-#### 🔸 **`clean_geolocation`** : Dédoublonner codes postaux
-- **Pourquoi** : 1M lignes pour 19K codes postaux uniques (53 entrées/zip en moyenne)
-- **Méthode** : Médiane lat/lng par zip_code_prefix (robuste aux outliers)
-- **Résultat** : 1 000 163 → 19 015 lignes, précision ~2km
+    # Transformation 1 : clean_geolocation (détaillée)
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("🔹 clean_geolocation : Dédoublonner codes postaux").classes('text-xl font-bold mb-3')
+        ui.markdown("""
+**Problème** : 1M lignes pour 19K codes postaux uniques (53 entrées/zip en moyenne)
+**Solution** : Médiane lat/lng par zip_code_prefix (robuste aux outliers)
+**Résultat** : 1 000 163 → **19 015 lignes**, précision ~2km
+""").classes('text-gray-300 mb-4')
 
-```python
-def _safe_mode(x):
-    \"\"\"Mode sécurisé évitant IndexError sur séries vides.\"\"\"
+        ui.label("💻 Code Python").classes('text-sm font-semibold mb-2')
+        with ui.card().classes('w-full bg-gray-900 p-4'):
+            code_python = """def _safe_mode(x):
+    '''Mode sécurisé évitant IndexError sur séries vides.'''
     mode = x.mode()
     return mode.iloc[0] if not mode.empty else (x.iloc[0] if len(x) > 0 else None)
 
@@ -169,107 +181,148 @@ def clean_geolocation(df):
         'lng': 'median',
         'city': _safe_mode,
         'state': _safe_mode
-    })
-```
+    })"""
+            ui.html(f'<pre class="font-mono text-xs" style="margin: 0; color: #e0e0e0; overflow-x: auto; max-width: 100%;">{code_python}</pre>')
 
-#### 🔸 **`aggregate_payments`** : Fusionner paiements multiples
-- **Pourquoi** : 103 886 lignes pour 99 441 commandes (97% mono-paiement)
-- **Méthode** : SUM(payment_value), MODE(payment_type) par order_id
-- **Résultat** : order_payment_total = montant total, payment_type = type dominant
+    # Transformation 2 : aggregate_payments
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("🔹 aggregate_payments : Fusionner paiements multiples").classes('text-xl font-bold mb-3')
+        ui.markdown("""
+**Problème** : 103 886 lignes pour 99 441 commandes (97% mono-paiement)
+**Solution** : SUM(payment_value), MODE(payment_type) par order_id
+**Résultat** : order_payment_total = montant total, payment_type = type dominant
+""").classes('text-gray-300')
 
-#### 🔸 **`latest_review_per_order`** : Résoudre reviews multiples
-- **Pourquoi** : 547 commandes ont plusieurs reviews (0.5%)
-- **Méthode** : Garder la review la plus récente (MAX(review_creation_date))
-- **Résultat** : 1 review par commande (99 224 → 98 666 commandes avec review)
+    # Transformation 3 : latest_review_per_order
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("🔹 latest_review_per_order : Résoudre reviews multiples").classes('text-xl font-bold mb-3')
+        ui.markdown("""
+**Problème** : 547 commandes ont plusieurs reviews (0.5%)
+**Solution** : Garder la review la plus récente (MAX(review_creation_date))
+**Résultat** : table reviews dédupliquée (99 224 lignes → 98 666 `order_id` avec review)
+""").classes('text-gray-300')
 
-#### 🔸 **`create_surrogate_keys`** : Optimiser clés étrangères
-- **Pourquoi** : UUID 32 char (32 bytes) → INTEGER (4 bytes) = 8× moins d'espace
-- **Méthode** : AUTOINCREMENT sur customer_key, seller_key, product_key
-- **Résultat** : Jointures 8× plus rapides, index B-Tree optimaux
+    # Transformation 4 : create_surrogate_keys
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-6'):
+        ui.label("🔹 create_surrogate_keys : Optimiser clés étrangères").classes('text-xl font-bold mb-3')
+        ui.markdown("""
+**Problème** : UUID 32 char (32 bytes) → INTEGER (4 bytes) = **8× moins d'espace**
+**Solution** : AUTOINCREMENT sur customer_key, seller_key, product_key
+**Résultat** : Index plus compacts, jointures plus efficaces et modèle homogène
+""").classes('text-gray-300')
 
-#### 🔸 **`calculate_delivery_metrics`** : Feature engineering temporel
-- **Méthodes** :
-  - `delivery_days` = delivered_date - purchase_date
-  - `estimated_days` = estimated_delivery_date - purchase_date
-  - `delivery_delta_days` = delivery_days - estimated_days (positif = retard)
-- **Résultat** : Métriques précalculées pour analyses logistiques
+    # Transformation 5 : calculate_delivery_metrics
+    with ui.card().classes('w-full bg-blue-900/20 border-l-4 border-blue-500 p-6 mb-8'):
+        ui.label("🔹 calculate_delivery_metrics : Feature engineering temporel").classes('text-xl font-bold mb-3')
+        ui.markdown("""
+**Métriques calculées** :
+- `delivery_days` = delivered_date - purchase_date
+- `estimated_days` = estimated_delivery_date - purchase_date
+- `delivery_delta_days` = delivery_days - estimated_days (positif = retard)
 
-### 3. **Load** : Insertion dans SQLite avec 5 index stratégiques
+**Résultat** : Métriques précalculées pour analyses logistiques
+""").classes('text-gray-300')
 
-```python
-# Schéma en étoile : 1 fait + 5 dimensions
+    # ── LOAD ──
+    ui.label("3. Load : Insertion dans SQLite avec 8 index stratégiques").classes('text-2xl font-bold mb-4 mt-8')
+    ui.markdown("""
+Création du **schéma en étoile** (1 fait + 5 dimensions) et des **index critiques** pour analyses interactives.
+""").classes('text-gray-300 mb-4')
+
+    with ui.card().classes('w-full bg-gray-900 p-4 mb-6'):
+        code_load = """# Schéma en étoile : 1 fait + 5 dimensions
 fact_orders.to_sql('fact_orders', conn, index=False)
 dim_customers.to_sql('dim_customers', conn, index=False)
 # ... 4 autres dimensions
 
-# Index critiques (accélération 100×)
-conn.execute("CREATE INDEX idx_orders_date ON fact_orders(date_key)")
-conn.execute("CREATE INDEX idx_orders_customer ON fact_orders(customer_key)")
-conn.execute("CREATE INDEX idx_orders_seller ON fact_orders(seller_key)")
-conn.execute("CREATE INDEX idx_orders_product ON fact_orders(product_key)")
-conn.execute("CREATE INDEX idx_orders_status ON fact_orders(order_status)")
-```
+# Index critiques
+conn.execute("CREATE INDEX idx_fact_order_id ON fact_orders(order_id)")
+conn.execute("CREATE INDEX idx_fact_date_key ON fact_orders(date_key)")
+conn.execute("CREATE INDEX idx_fact_customer_key ON fact_orders(customer_key)")
+conn.execute("CREATE INDEX idx_fact_seller_key ON fact_orders(seller_key)")
+conn.execute("CREATE INDEX idx_fact_product_key ON fact_orders(product_key)")
+conn.execute("CREATE INDEX idx_fact_order_status ON fact_orders(order_status)")
+conn.execute("CREATE INDEX idx_fact_customer_geo ON fact_orders(customer_geo_key)")
+conn.execute("CREATE INDEX idx_fact_seller_geo ON fact_orders(seller_geo_key)")"""
+        ui.html(f'<pre class="font-mono text-sm" style="margin: 0; color: #e0e0e0; overflow-x: auto; max-width: 100%;">{code_load}</pre>')
 
-➡️ **Résultat** : 1.5M lignes brutes → 287K lignes structurées, queryable en <200ms
+    # Résultat final
+    with ui.card().classes('w-full bg-green-900/20 border-l-4 border-green-500 p-4'):
+        ui.label("✅ Résultat").classes('text-lg font-bold mb-2')
+        ui.markdown("""
+**1 550 871 lignes brutes → 267 867 lignes modélisées** (6 tables du DWH)
 """).classes('text-gray-300')
 
 
 def render_slide_3():
     """Slide 3 : Schéma en étoile."""
-    ui.label("⭐ Schéma en Étoile").classes('text-4xl font-bold mb-4')
+    ui.label("⭐ Schéma en Étoile").classes('text-4xl font-bold mb-6')
 
     ui.markdown("""
 ## Modélisation dimensionnelle : Le cœur du DWH
 
 Le schéma en étoile est le standard pour les Data Warehouses analytiques.
-""").classes('text-gray-300 mb-4')
+""").classes('text-gray-300 mb-6')
 
     # Schéma ERD avec Mermaid
     ui.mermaid("""
 erDiagram
-    fact_orders ||--o{ dim_customers : "customer_key"
-    fact_orders ||--o{ dim_sellers : "seller_key"
-    fact_orders ||--o{ dim_products : "product_key"
-    fact_orders ||--o{ dim_geolocation : "customer_zip_code"
-    fact_orders ||--o{ dim_dates : "order_date"
+    dim_customers ||--o{ fact_orders : "customer_key"
+    dim_sellers ||--o{ fact_orders : "seller_key"
+    dim_products ||--o{ fact_orders : "product_key"
+    dim_dates ||--o{ fact_orders : "date_key"
+    dim_geolocation ||--o{ fact_orders : "customer_geo_key / seller_geo_key"
 
     fact_orders {
-        int order_item_id PK
+        int fact_key PK
         string order_id
+        int order_item_id
+        int date_key FK
         int customer_key FK
         int seller_key FK
         int product_key FK
-        date order_date
-        decimal price
+        int customer_geo_key FK
+        int seller_geo_key FK
         string order_status
-        int delivery_days
+        decimal price
+        decimal freight_value
+        decimal order_payment_total
+        string payment_type
         int review_score
+        decimal delivery_days
     }
 
     dim_customers {
         int customer_key PK
         string customer_id
-        string customer_city
-        string customer_state
+        string customer_unique_id
+        int geo_key FK
+        string city
+        string state
     }
 
     dim_sellers {
         int seller_key PK
         string seller_id
-        string seller_city
-        string seller_state
+        int geo_key FK
+        string city
+        string state
     }
 
     dim_products {
         int product_key PK
         string product_id
-        string category
+        string category_name_pt
+        string category_name_en
         decimal weight_g
-        decimal volume_cm3
+        decimal length_cm
+        decimal height_cm
+        decimal width_cm
     }
 
     dim_geolocation {
-        string zip_code PK
+        int geo_key PK
+        string zip_code_prefix
         string city
         string state
         float lat
@@ -277,14 +330,16 @@ erDiagram
     }
 
     dim_dates {
-        date date_key PK
+        int date_key PK
+        date full_date
         int year
+        int quarter
         int month
         int day
-        int week
-        string month_name
+        int day_of_week
+        int is_weekend
     }
-""").classes('w-full mb-4')
+""").classes('w-full mb-8')
 
     ui.markdown("""
 ### 📊 Cardinalités
@@ -292,19 +347,22 @@ erDiagram
 | Table | Lignes | Rôle |
 |-------|--------|------|
 | **fact_orders** | 112 650 | **Table de faits** (transactions) |
-| dim_customers | 96 096 | Attributs clients (ville, état) |
+| dim_customers | 99 441 | Attributs clients (1 ligne par `customer_id`) |
 | dim_sellers | 3 095 | Attributs vendeurs |
 | dim_products | 32 951 | Catégories, dimensions produits |
 | dim_geolocation | 19 015 | Codes postaux dédoublonnés |
 | dim_dates | 715 | Calendrier (2016-09-04 → 2018-11-12) |
+""").classes('text-gray-300 mb-6')
 
+    ui.markdown("""
 ### 🔑 Grain de la table de faits
 **1 ligne = 1 article d'une commande** (order_id + order_item_id)
 
 **Distribution grain commande → article** :
 - **90.1% des commandes** = 1 seul article (mono-item)
 - **9.9% des commandes** = 2 à 21 articles (multi-items)
-- **Total** : 99 441 commandes → 112 650 lignes (ratio 1.13)
+- **Dans la fact** : 98 666 commandes avec articles → 112 650 lignes (ratio 1.14)
+- **Source orders** : 99 441 commandes au total, dont 775 sans article (exclues du grain)
 
 **Exemple** : Commande #abc123 avec 3 articles → 3 lignes dans fact_orders (order_item_id = 1, 2, 3)
 
@@ -312,12 +370,16 @@ erDiagram
 - ✅ Permet d'agréger au niveau commande (`GROUP BY order_id`) ou article
 - ✅ Conserve le détail maximal (prix unitaire par article, vendeur par article)
 - ✅ Facilite les analyses produit (quel article génère le plus de CA ?)
+""").classes('text-gray-300 mb-6')
 
+    ui.markdown("""
 **⚠️ Attention aux métriques semi-additives** :
 - `order_payment_total` est au grain **commande**, pas article
 - Exemple : Commande 100 R$ avec 2 articles → chaque ligne affiche 100 R$
 - **Pour obtenir le total correct** : `SELECT DISTINCT order_id, order_payment_total` puis SUM
+""").classes('text-gray-300 mb-6')
 
+    ui.markdown("""
 ### 🎯 Avantages du schéma en étoile
 - ✅ **Jointures simples** : 1 saut de la fact vers chaque dimension
 - ✅ **Performance** : Clés surrogate (int) ultra-rapides (8× moins d'espace que UUID)
@@ -328,11 +390,13 @@ erDiagram
 
 def render_slide_4():
     """Slide 4 : Décisions architecturales."""
-    ui.label("🏗️ Décisions Architecturales").classes('text-4xl font-bold mb-4')
+    ui.label("🏗️ Décisions Architecturales").classes('text-4xl font-bold mb-6')
 
     ui.markdown("""
 ## Choix techniques qui rendent le DWH performant
+""").classes('text-gray-300 mb-8')
 
+    ui.markdown("""
 ### 1. **Grain : Article vs Commande**
 
 **Option 1 - Grain "Commande"** (rejeté) :
@@ -346,31 +410,34 @@ def render_slide_4():
 - ✅ Analyses produit facilitées
 
 ➡️ **Décision** : 1 ligne = 1 article (112k lignes dans fact_orders)
+""").classes('text-gray-300 mb-8')
 
----
-
+    ui.markdown("""
 ### 2. **Index Stratégiques**
 
 Les index accélèrent les recherches de O(n) → O(log n).
 
 **Index créés** :
 ```sql
-CREATE INDEX idx_orders_date ON fact_orders(order_date);
-CREATE INDEX idx_orders_status ON fact_orders(order_status);
-CREATE INDEX idx_orders_customer ON fact_orders(customer_key);
-CREATE INDEX idx_orders_seller ON fact_orders(seller_key);
-CREATE INDEX idx_orders_product ON fact_orders(product_key);
+CREATE INDEX idx_fact_order_id ON fact_orders(order_id);
+CREATE INDEX idx_fact_date_key ON fact_orders(date_key);
+CREATE INDEX idx_fact_customer_key ON fact_orders(customer_key);
+CREATE INDEX idx_fact_seller_key ON fact_orders(seller_key);
+CREATE INDEX idx_fact_product_key ON fact_orders(product_key);
+CREATE INDEX idx_fact_order_status ON fact_orders(order_status);
+CREATE INDEX idx_fact_customer_geo ON fact_orders(customer_geo_key);
+CREATE INDEX idx_fact_seller_geo ON fact_orders(seller_geo_key);
 ```
 
 **Impact** :
-- Filtrage WHERE sur `order_date` : **100x plus rapide** (0.5ms vs 50ms)
-- Jointures fact → dimensions : **Instantanées** (déjà indexées)
-- Tri ORDER BY : **Optimisé** (index covering)
+- Filtres sur `date_key` et `order_status` accélérés
+- Jointures fact → dimensions soutenues par index sur clés étrangères
+- Gains variables selon machine, cache SQLite et complexité de la requête
 
-**Principe** : Indexer toutes les clés étrangères + colonnes filtrées fréquemment.
+**Principe** : Indexer les clés de jointure + colonnes de filtrage fréquentes.
+""").classes('text-gray-300 mb-8')
 
----
-
+    ui.markdown("""
 ### 3. **Vues Analytiques (virtuelles, pas matérialisées)**
 
 ⚠️ **SQLite ne supporte PAS les vues matérialisées** (contrairement à PostgreSQL)
@@ -417,9 +484,9 @@ Vue dénormalisée pour analyses ad-hoc sans réécrire les JOINs.
 **Avantage** : Requêtes complexes deviennent `SELECT * FROM v_monthly_sales`.
 
 **Limite** : Pas de cache. Pour matérialiser : `CREATE TABLE AS SELECT ...` (manuelle).
+""").classes('text-gray-300 mb-8')
 
----
-
+    ui.markdown("""
 ### 4. **Clés Surrogate vs Clés Naturelles**
 
 **Clé naturelle** : `customer_id` (string UUID 32 chars, 32 bytes)
@@ -432,9 +499,9 @@ Vue dénormalisée pour analyses ad-hoc sans réécrire les JOINs.
 - ✅ **Index plus compacts** (B-Tree sur int = optimal)
 
 ➡️ **Décision** : Toutes les FK utilisent des clés surrogate (customer_key, seller_key, product_key).
+""").classes('text-gray-300 mb-8')
 
----
-
+    ui.markdown("""
 ### 5. **SQLite vs PostgreSQL**
 
 Pourquoi SQLite pour un DWH ?
@@ -443,7 +510,7 @@ Pourquoi SQLite pour un DWH ?
 - ✅ **Zero-config** : 1 fichier .db, pas de serveur
 - ✅ **Portable** : Copier le .db = copier tout le DWH
 - ✅ **Rapide** : Window functions performantes, optimiseur correct
-- ✅ **Suffisant** : < 1M lignes = parfait pour SQLite
+- ✅ **Suffisant** : volume actuel du DWH = ~268k lignes (dont 112k dans fact_orders)
 
 **Limites** (OK pour notre use case) :
 - ❌ Pas de concurrence écriture (read-only en prod = OK)
@@ -456,15 +523,15 @@ Pourquoi SQLite pour un DWH ?
 
 def render_slide_5():
     """Slide 5 : Validation & Qualité des Données."""
-    ui.label("✅ Validation & Qualité des Données").classes('text-4xl font-bold mb-4')
+    ui.label("✅ Validation & Qualité des Données").classes('text-4xl font-bold mb-6')
 
     ui.markdown("""
 ## Intégrité des transformations CSV → DWH
 
 La validation systématique garantit que les transformations ETL n'ont introduit aucune perte de données ni erreur de calcul.
+""").classes('text-gray-300 mb-8')
 
----
-
+    ui.markdown("""
 ### 📊 Tableau de concordance CSV ↔ DWH
 
 | Entité | CSV Source | Data Warehouse | Match | Observations |
@@ -478,227 +545,106 @@ La validation systématique garantit que les transformations ETL n'ont introduit
 | **Paiements** | 103 886 lignes | Agrégé par order | **100% ✅** | 100% des totaux par commande concordent |
 
 **Verdict global** : **0 perte financière**, intégrité 100% sur les entités et montants.
+""").classes('text-gray-300 mb-8')
 
----
-
+    ui.markdown("""
 ### 🚨 Anomalies identifiées et documentées
+""").classes('text-gray-300 mb-6')
 
+    ui.markdown("""
 #### 1. **775 commandes sans articles (0.78%)**
 - **Statuts** : unavailable (603), canceled (164), created (5), invoiced (2), shipped (1)
 - **Traitement** : Exclus de fact_orders car grain = article (cohérent avec modélisation)
 - **Impact** : Aucun sur analyses produit/vendeur (commandes sans transaction)
+""").classes('text-gray-300 mb-6')
 
+    ui.markdown("""
 #### 2. **285 entités sans geolocation**
 - **Détail** : 278 clients (0.28%) + 7 vendeurs (0.23%)
 - **Cause** : Codes postaux absents de `olist_geolocation_dataset.csv`
 - **Traitement** : geo_key = NULL dans dim_customers/dim_sellers
 - **Impact** : Analyses géographiques possibles, entités NULL filtrables
+""").classes('text-gray-300 mb-6')
 
+    ui.markdown("""
 #### 3. **Précision géolocalisation ~2 km**
 - **Méthode** : Médiane lat/lng par code postal (1M → 19K lignes)
 - **Écart médian** : 0.02° lat, 0.018° lng ≈ 2 km
 - **Qualité** : OK pour analyses régionales/états, insuffisant pour géocodage précis
+""").classes('text-gray-300 mb-6')
 
-#### 4. **942 commandes sans review (0.95%)**
+    ui.markdown("""
+#### 4. **Reviews manquantes dans fact_orders**
+- **Constat** : 942 lignes avec `review_score` NULL (0.84%), soit 749 commandes distinctes
 - **Cause** : Commandes non livrées ou reviews non soumises
-- **Traitement** : review_score = NULL dans fact_orders
-- **Impact** : Exclus des calculs avg_review (fonction AVG ignore NULL)
+- **Traitement** : `review_score` conservé à NULL dans fact_orders
+- **Impact** : Exclues des calculs avg_review (`AVG` ignore les NULL)
+""").classes('text-gray-300 mb-8')
 
----
-
+    ui.markdown("""
 ### 🧪 Script de validation indépendant
 
-**`verify_csv_analysis.sh`** : 50+ assertions automatisées
+**`verify_csv_analysis.sh`** : plusieurs dizaines d'assertions automatisées
 
 ```bash
 #!/bin/bash
-# Validation continue après chaque modification ETL
+# Validation indépendante (CSV bruts -> SQLite temporaire)
+sum_price=$(query_db "
+  SELECT PRINTF('%.2f', SUM(CAST(price AS REAL)))
+  FROM olist_order_items_dataset;
+")
+check_value "SUM(price)" "13591643.70" "$sum_price"
 
-# Exemple d'assertions
-assert_count "orders CSV" 99441 "wc -l < data/raw/olist_orders_dataset.csv"
-assert_count "fact_orders DB" 112650 "sqlite3 olist_dw.db 'SELECT COUNT(*) FROM fact_orders'"
-assert_sum "prix CSV" 13591643.70 "csvstat --sum price olist_order_items_dataset.csv"
-assert_sum "prix DB" 13591643.70 "sqlite3 olist_dw.db 'SELECT SUM(price) FROM fact_orders'"
-
-# ... 46 autres assertions
+no_items_total=$(query_db "
+  SELECT COUNT(*) FROM olist_orders_dataset
+  WHERE order_id NOT IN (SELECT DISTINCT order_id FROM olist_order_items_dataset);
+")
+check_value "Commandes sans articles (total)" "775" "$no_items_total"
 ```
 
 **Avantage** : Reproduit tous les chiffres clés via csvkit + SQLite temporaire → validation reproductible.
+""").classes('text-gray-300 mb-8')
 
----
-
+    ui.markdown("""
 ### 🎯 Distribution des valeurs NULL dans fact_orders
 
 | Colonne | NULLs | % | Explication |
 |---------|-------|---|-------------|
-| `delivery_days` | 2 454 | 2.2% | Commandes non livrées (shipped, canceled) |
-| `review_score` | 942 | 0.8% | Commandes sans avis client |
-| `customer_geo_key` | 302 | 0.3% | Codes postaux clients absents de dim_geolocation |
-| `seller_geo_key` | 253 | 0.2% | Codes postaux vendeurs absents de dim_geolocation |
+| `delivery_days` | 2 454 | 2.18% | Commandes non livrées (shipped, canceled, unavailable...) |
+| `review_score` | 942 | 0.84% | Lignes fact sans avis (749 commandes distinctes) |
+| `customer_geo_key` | 302 | 0.27% | Codes postaux clients absents de dim_geolocation |
+| `seller_geo_key` | 253 | 0.23% | Codes postaux vendeurs absents de dim_geolocation |
 | `order_payment_total` | 3 | 0.003% | Anomalie marginale (potentielle erreur source) |
 
 **Traitement** : Valeurs NULL conservées (pas d'imputation arbitraire), filtrables via `WHERE column IS NOT NULL`.
+""").classes('text-gray-300 mb-8')
 
----
-
+    ui.markdown("""
 ## ✅ Conclusion : Qualité validée
 
 - ✅ **Intégrité 100%** sur entités, montants financiers et volumes
 - ✅ **0 perte de données** sur transactions valides (grain article)
 - ✅ **Anomalies documentées** (775 commandes sans articles = exclusion cohérente)
-- ✅ **Validation continue** via script indépendant (50+ assertions automatisées)
+- ✅ **Validation continue** via script indépendant (plusieurs dizaines d'assertions)
 
 ➡️ Le DWH est fiable pour analyses métier et décisions stratégiques
-""").classes('text-gray-300')
-
-
-def render_slide_6():
-    """Slide 6 : Justification business."""
-    ui.label("💼 Valeur Business du DWH").classes('text-4xl font-bold mb-4')
+""").classes('text-gray-300 mb-8')
 
     ui.markdown("""
-## Pourquoi investir dans un Data Warehouse ?
-
-### 🎯 Dimensions métier activées
-
-Le DWH Olist permet d'analyser le business sous **5 dimensions** :
-
-1. **📅 Temps** : Tendances mensuelles, saisonnalité, cohortes
-2. **🌎 Géographie** : Performance par état/ville (client ET vendeur)
-3. **👥 Clients** : Segmentation RFM, LTV, rétention, nouveaux vs récurrents
-4. **🏪 Vendeurs** : Scoring multi-critères, Pareto, qualité livraison
-5. **📦 Produits** : Catégories star, panier moyen, cross-sell
-
-**Impossible avec CSV bruts** : Chaque dimension nécessite des jointures complexes et des agrégations.
-
 ---
 
-### 📊 9 Métriques métier débloquées par le DWH
+## 🎓 Prêt à maîtriser SQL avancé ?
 
-| Métrique | Description | Requête SQL |
-|----------|-------------|-------------|
-| **Taux de rétention par cohorte** | % clients revenus M+1, M+2... après 1er achat | `cohorts_retention.sql` |
-| **LTV (Lifetime Value)** | CA total par client unique | `ltv_cohorts.sql` |
-| **Nouveaux vs récurrents** | Nombre clients 1er achat vs déjà actifs par mois | `new_vs_recurring.sql` |
-| **Pareto vendeurs** | Top 20% vendeurs génèrent X% du CA | `pareto_sellers.sql` |
-| **Panier moyen** | CA / nb commandes | `basket_avg.sql` |
-| **Score review moyen** | Moyenne des avis clients (1-5 étoiles) | `overview_kpis.sql` |
-| **Segmentation RFM** | Recency, Frequency, Monetary (10 segments) | `rfm_segmentation.sql` |
-| **Scoring vendeurs** | Note multi-critères (délai, review, CA) | `seller_scoring.sql` |
-| **Délai livraison moyen** | Jours entre achat et livraison effective | `overview_kpis.sql` |
+Vous allez maintenant apprendre à exploiter ce Data Warehouse avec **SQL avancé** :
 
-**ROI direct** : Ces KPIs pilotent les décisions stratégiques (où investir, quels produits pousser, quels vendeurs coacher).
+**5 modules progressifs** :
+1. **Fondamentaux** : SELECT, WHERE, GROUP BY, JOINs, sous-requêtes
+2. **Window Functions** : RANK, ROW_NUMBER, LEAD/LAG, NTILE
+3. **CTEs & Récursivité** : WITH, requêtes multi-niveaux
+4. **Optimisation** : EXPLAIN, index, matérialisation
+5. **Cas Métier Olist** : Cohortes, RFM, Pareto, Scoring vendeurs
 
----
+**🎯 Objectif** : Écrire vous-même les 9 métriques KPI du DWH Olist
 
-### ⚡ Rapidité = Agilité décisionnelle
-
-**Avant (CSV)** :
-- Analyste : 30 min de code Python → attendre 5s → debugger → réexécuter...
-- Total : **2-3h** pour une analyse ad-hoc
-- Résultat : **1 analyse par jour** max
-
-**Après (DWH)** :
-- Analyste : 5 min de SQL → résultat en 0.2s → itérer rapidement
-- Total : **10-15 min** pour une analyse ad-hoc
-- Résultat : **10-20 analyses par jour**
-
-➡️ **10x plus de questions business répondues** = décisions data-driven plus rapides.
-
----
-
-### 🔍 Complexités impossibles sans DWH
-
-Certaines analyses sont **impossibles** (ou prohibitives) avec CSV Pandas :
-
-#### 1. **Auto-jointures temporelles**
-"Clients ayant commandé X puis Y dans les 30 jours suivants" → Self-join sur dates.
-
-#### 2. **Window functions complexes**
-"Rang du produit par catégorie ET par état" → PARTITION BY multi-niveaux.
-
-#### 3. **CTEs récursives**
-"Parcours clients sur N commandes" → WITH RECURSIVE (pas supporté en Pandas).
-
-#### 4. **Sous-requêtes corrélées optimisées**
-"Top 3 produits par vendeur" → CTE + ROW_NUMBER (vs boucles Pandas).
-
----
-
-### 💰 Économies estimées (ordres de grandeur)
-
-**Infrastructure** :
-- ❌ CSV : Serveur 32GB RAM pour charger données en mémoire
-- ✅ DWH : SQLite = 1 fichier 50MB, serveur 2GB RAM
-- **Gain estimé** : **10× moins cher** en infrastructure cloud
-
-**Temps analyste** :
-- ❌ CSV : Analyses lentes (5-10s), code complexe (150+ lignes)
-- ✅ DWH : Analyses rapides (0.2-0.5s), requêtes concises (80 lignes SQL)
-- **Gain estimé** : **15-25h/semaine libérées** pour analyses avancées
-
-**⚠️ Note** : Chiffres indicatifs, varient selon organisation, volumétrie et infrastructure existante.
-
----
-
-### 🚀 Évolutivité
-
-Le DWH est **futur-proof** :
-- ✅ Ajouter une nouvelle dimension (ex: `dim_categories`) = 1 colonne FK dans fact
-- ✅ Ajouter une nouvelle métrique = 1 nouvelle colonne calculée
-- ✅ Migrer vers PostgreSQL si croissance > 10M lignes = schema compatible
-
-**Pandas CSV n'est PAS évolutif** : Chaque nouvelle source = refactor complet du pipeline.
-
----
-
-## ✅ Conclusion : DWH = Fondation analytique
-
-Le Data Warehouse n'est pas un luxe, c'est **la base indispensable** pour toute entreprise data-driven.
-
----
-
-### 🎯 Valeur démontrée sur le projet Olist
-
-| Dimension | Résultat |
-|-----------|----------|
-| **Performance** | 25× plus rapide (requêtes <200ms vs 5s Pandas) |
-| **Qualité** | Concordance 100% (0 perte financière sur 13.6M R$) |
-| **Métriques** | 9 KPIs métier débloqués (rétention, LTV, RFM, Pareto...) |
-| **Échelle** | 1.5M lignes brutes → 287K lignes structurées optimisées |
-| **Infrastructure** | 1 fichier 50MB SQLite (portable, zero-config) |
-
----
-
-### 📊 Limites assumées du projet
-
-| Limite | Justification |
-|--------|---------------|
-| **SQLite (pas PostgreSQL)** | OK pour <1M lignes, read-only, mono-utilisateur |
-| **Vues virtuelles (pas matérialisées)** | SQLite ne supporte pas MATERIALIZED VIEW |
-| **Précision géo ~2km** | Médiane lat/lng par code postal (OK analyses régionales) |
-| **Grain article** | Semi-additif sur `order_payment_total` (nécessite DISTINCT order_id) |
-
-➡️ Migration PostgreSQL recommandée si volumétrie > 10M lignes ou concurrence écriture nécessaire
-
----
-
-### 🎓 Prêt à maîtriser SQL avancé ?
-
-**Dans les 5 modules suivants**, vous allez apprendre à :
-
-1. **Module 1 - Fondamentaux** : SELECT, WHERE, GROUP BY, JOINs, sous-requêtes
-2. **Module 2 - Window Functions** : RANK, ROW_NUMBER, LEAD/LAG, NTILE
-3. **Module 3 - CTEs & Récursivité** : WITH, requêtes multi-niveaux, arbres hiérarchiques
-4. **Module 4 - Optimisation** : EXPLAIN, index, matérialisation, dénormalisation
-5. **Module 5 - Cas Métier Olist** : Écrire les 9 requêtes KPI présentées !
-
-**🎯 Vous allez écrire vous-même les 9 métriques SQL** :
-- `cohorts_retention.sql` (matrice rétention par cohorte)
-- `rfm_segmentation.sql` (segmentation clients 10 groupes)
-- `pareto_sellers.sql` (règle 80/20 sur vendeurs)
-- `seller_scoring.sql` (note multi-critères)
-- ... et 5 autres requêtes analytiques avancées
-
-**Commençons par les fondamentaux !** 🚀
+**Commençons ! 🚀**
 """).classes('text-gray-300')

@@ -51,7 +51,7 @@ Structure principale :
 - `src/dashboard/db.py` : connexion SQLite, chargement SQL, execution requetes.
 - `src/dashboard/theme.py` : palette couleurs, CSS, templates graphiques.
 - `src/dashboard/presentation.py` : parcours narratif en 5 etapes (`/presentation`).
-- `src/dashboard/components/` : composants reutilisables (`sql_viewer`, `kpi_card`, `insight`, `benchmark`, `page_layout`).
+- `src/dashboard/components/` : composants reutilisables (`sql_viewer`, `sql_editor`, `sql_annotator`, `explain_visualizer`, `kpi_card`, `insight`, `benchmark`, `chapter_layout`, `page_layout`).
 - `src/dashboard/pages/` : pages analytiques.
 
 ## Pages disponibles
@@ -83,7 +83,8 @@ Les vues SQL reutilisees par plusieurs pages sont definies dans :
 Tests cibles :
 
 ```bash
-uv run --extra dev --extra dashboard pytest -q tests/test_dashboard_db.py tests/test_dashboard_sql.py
+uv run --extra dev --extra dashboard python -m pytest -q tests/test_dashboard_db.py tests/test_dashboard_sql.py tests/dashboard/
 ```
 
-Ces tests couvrent la couche DB dashboard et l'execution des requetes SQL.
+Ces tests couvrent la couche DB dashboard, l'execution SQL, les validateurs d'exercices,
+le contenu pedagogique et le visualiseur `EXPLAIN`.

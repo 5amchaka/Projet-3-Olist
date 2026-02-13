@@ -59,6 +59,10 @@ uv sync --extra dev
 uv sync --extra notebook
 ```
 
+Note:
+- le launcher (`launch.py`) et le dashboard necessitent les extras `dashboard`.
+- pour un parcours automatise sans ambiguite de dependances, preferer `uv sync --all-extras`.
+
 2. Configuration (`.env` optionnel)
 
 ```bash
@@ -185,6 +189,7 @@ data/database/        # SQLite data warehouse (olist_dw.db)
 | [docs/launcher.md](docs/launcher.md) | Launcher: architecture, options, workflows |
 | [docs/Analyse_Transformations_Olist_DW.md](docs/Analyse_Transformations_Olist_DW.md) | Analyse des transformations ETL |
 | [sql/dashboard/README.md](sql/dashboard/README.md) | Inventaire des requetes SQL du dashboard |
+| [sql/dashboard/SQL_avancé.md](sql/dashboard/SQL_avancé.md) | Support pedagogique SQL avance (CTEs, window functions, EXPLAIN, bonnes pratiques) |
 | [notebooks/exploration_csv.ipynb](notebooks/exploration_csv.ipynb) | Exploration: profils, cardinalites, visualisations |
 | [notebooks/comparaison_csv_bdd.ipynb](notebooks/comparaison_csv_bdd.ipynb) | Tracabilite CSV -> BDD: volumetrie, distributions |
 

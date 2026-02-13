@@ -1,358 +1,151 @@
-# Launcher Automatisé - Documentation Technique
+# Launcher Automatise - Documentation Technique
 
 ## Vue d'ensemble
 
-Le launcher automatisé (`launch.py`) orchestre l'ensemble du setup et du lancement du dashboard Olist avec une interface CLI engageante style Matrix.
+Le launcher (`launch.py`) orchestre le cycle complet:
+
+1. verification de l'environnement
+2. telechargement des CSV si necessaire
+3. execution ETL si necessaire
+4. validation de la base
+5. lancement du dashboard
+
+Il expose deux modes d'interface:
+
+- mode CLI (terminal)
+- mode splash WebSocket (page web temporaire sur `http://localhost:8079`)
 
 ## Architecture
 
-### Structure des Fichiers
+### Fichiers
 
-```
-launch.py                          # Point d'entrée CLI
+```text
+launch.py
 src/launcher/
-├── __init__.py                    # Exports publics
-├── orchestrator.py                # Orchestration des phases
-├── ui.py                          # Interface visuelle Matrix
-├── config_manager.py              # Gestion .env et Kaggle
-├── healthcheck.py                 # Diagnostics système
-├── downloader.py                  # Téléchargement CSV
-└── logger_adapter.py              # Bridge logging → UI
+├── orchestrator.py        # orchestration des phases
+├── ui.py                  # rendu CLI et adaptateur UI
+├── config_manager.py      # chargement .env + permissions
+├── healthcheck.py         # diagnostics systeme
+├── downloader.py          # telechargement Kaggle + manifest
+├── logger_adapter.py      # bridge logs ETL -> UI
+├── browser_opener.py      # ouverture navigateur (Linux/WSL/Windows)
+└── splash/                # serveur splash + events + health check
 ```
 
-### Dépendances
+### Comportement reel de configuration
 
-- `click` : Interface CLI et parsing d'arguments
-- `tqdm` : Barres de progression (future utilisation)
-- `colorama` : Couleurs cross-platform
-- `python-dotenv` : Gestion fichiers .env
-- Modules existants : `src.etl.pipeline`, `src.config`, `src.dashboard`
+- `.env` est **optionnel**.
+- si `KAGGLE_USERNAME` / `KAGGLE_KEY` sont absents, le downloader injecte des credentials par defaut (`anonymous`) pour le dataset public Olist.
+- le launcher ne cree pas `.env` de facon interactive.
 
-## Flux d'Exécution
+## Flux d'execution
 
-```mermaid
-graph TD
-    A[launch.py] --> B[UIManager]
-    A --> C[OlistOrchestrator]
-    C --> D[Phase 1: Configuration]
-    D --> E[ConfigManager]
-    E --> F{.env exists?}
-    F -->|Non| G[Création interactive]
-    F -->|Oui| H[Validation Kaggle]
+Phases executees par `OlistOrchestrator`:
 
-    C --> I[Phase 2: Health Check]
-    I --> J[HealthChecker]
+1. `Configuration & Validation`
+2. `Pre-flight Health Check`
+3. `Downloading CSV Files` (conditionnelle)
+4. `ETL Pipeline` (conditionnelle)
+5. `Post-ETL Validation` ou `Database Validation`
+6. `Launching Dashboard`
 
-    C --> K{Need download?}
-    K -->|Oui| L[Phase 3: Download CSV]
-    L --> M[KaggleDownloader]
-    K -->|Non| N[Skip]
+Phases optionnelles selon flags:
 
-    C --> O{Need ETL?}
-    O -->|Oui| P[Phase 4: ETL Pipeline]
-    P --> Q[setup_logging_bridge]
-    P --> R[run_full_pipeline]
-    O -->|Non| S[Skip]
+- `CSV Verification (csvkit)` via `--verify-csv`
+- `Running Unit Tests` via `--run-tests`
+- `Running All Tests` via `--run-all-tests`
 
-    C --> T[Phase 5: Post-ETL Validation]
-    T --> U[validate_data_integrity]
+## Logique de skip
 
-    C --> V[Phase 6: Launch Dashboard]
-    V --> W[subprocess: src.dashboard]
-```
-
-## Modules
-
-### 1. `ui.py` - Interface Utilisateur
-
-**Responsabilités** :
-- Animation Matrix (20 lignes de caractères aléatoires)
-- Banner ASCII "OLIST Dashboard Launcher v1.0"
-- Messages colorés avec symboles (✓, ✗, ⚠, ℹ, ⊘)
-- Context manager pour phases avec timing automatique
-- Box de succès finale
-
-**Palette de couleurs** :
-```python
-COLORS = {
-    "banner": Fore.GREEN + Style.BRIGHT,   # Matrix green
-    "phase": Fore.CYAN + Style.BRIGHT,     # Headers
-    "success": Fore.GREEN,                  # Succès
-    "warning": Fore.YELLOW,                 # Avertissements
-    "error": Fore.RED + Style.BRIGHT,      # Erreurs
-    "info": Fore.WHITE,                     # Info
-    "skip": Fore.MAGENTA,                   # Skip
-}
-```
-
-**Modes** :
-- Normal : Tous les messages
-- Verbose : + logs détaillés
-- Quiet : Erreurs uniquement
-
-### 2. `orchestrator.py` - Orchestrateur Principal
-
-**Responsabilités** :
-- Coordination des 6 phases de lancement
-- Logique de skip intelligent (basée sur timestamps et existence)
-- Gestion des erreurs avec contextualisation
-- Modes : full launch, health check only
-
-**Skip Logic** :
-- **Download** : Skip si tous les CSV présents (sauf `--force`)
-- **ETL** : Skip si DB existe ET plus récente que les CSV (sauf `--force` ou `--skip-etl`)
-
-**Phases** :
-1. Configuration & Validation
-2. Pre-flight Health Check
-3. Download CSV (conditionnel)
-4. ETL Pipeline (conditionnel)
-5. Post-ETL Validation
-6. Launch Dashboard
-
-### 3. `config_manager.py` - Gestion Configuration
-
-**Responsabilités** :
-- Vérification/création du fichier `.env`
-- Création interactive avec prompts utilisateur
-- Validation credentials Kaggle
-- Vérification permissions système
-
-**Workflow création .env** :
-```
-1. Vérifier existence .env
-2. Si absent → Prompt utilisateur
-3. Demander KAGGLE_USERNAME
-4. Demander KAGGLE_KEY
-5. Écrire .env avec template
-6. Charger via dotenv
-```
-
-### 4. `healthcheck.py` - Diagnostics
-
-**Responsabilités** :
-- Vérification structure répertoires
-- Vérification dépendances Python
-- Vérification présence CSV (9/9)
-- Vérification DB (existence, schéma, row counts)
-- Validation intégrité données
-
-**Schéma attendu** :
-```python
-expected_tables = {
-    "dim_dates",
-    "dim_geolocation",
-    "dim_customers",
-    "dim_sellers",
-    "dim_products",
-    "fact_orders",
-}
-```
-
-**Rapport diagnostic** :
-```
-Directory Structure: ✓/✗
-Python Dependencies: ✓/✗
-CSV Files: X/9
-Database: ✓ (XX.X MB)
-  Schema: ✓ Valid
-  Row counts:
-    - dim_dates: XXX
-    - dim_geolocation: XXX
-    - ...
-```
-
-### 5. `downloader.py` - Téléchargement CSV
-
-**Responsabilités** :
-- Téléchargement dataset Kaggle via CLI
-- Décompression automatique
-- Vérification fichiers téléchargés
-- Génération manifest.txt (line counts, MD5, tailles)
-
-**Dataset** : `olistbr/brazilian-ecommerce`
-
-**Manifest** :
-```
-# Olist Dataset Manifest
-# Generated by launcher
-
-filename.csv                                   XXXXX lines   XX.XX MB  md5hash
-...
-```
-
-### 6. `logger_adapter.py` - Bridge Logging
-
-**Responsabilités** :
-- Capturer les logs du pipeline ETL
-- Rediriger vers UIManager pour affichage live
-- Handler custom pour logging.Handler
-- Restauration logging par défaut après ETL
-
-**Flow** :
-```
-ETL logger.info(...) → UILogHandler → ui.display_live_log(level, msg)
-```
+- Download:
+  - force avec `--force`
+  - sinon skip si les 9 CSV sont deja presents dans `data/raw/`
+- ETL:
+  - force avec `--force`
+  - skip si `--skip-etl` et DB existante
+  - sinon execution auto si DB absente ou si CSV plus recents que `olist_dw.db`
 
 ## Options CLI
 
-### Flags Principaux
+Options disponibles (`uv run python launch.py --help`):
 
 ```bash
---force              # Force re-download + rebuild DB
---skip-etl           # Skip ETL si DB existe
---skip-download      # Skip download si CSV présents
---verbose / -v       # Logs détaillés
---quiet / -q         # Minimal output
---port INTEGER       # Port dashboard (défaut: 8080)
---no-browser         # Pas d'ouverture auto navigateur
---health-check-only  # Diagnostic uniquement
+--force
+--skip-etl
+--skip-download
+-v, --verbose
+-q, --quiet
+--port INTEGER
+--no-browser
+--no-splash
+--theme [matrix|simplon]
+--run-tests
+--run-all-tests
+--verify-csv
+--health-check-only
 ```
 
-### Exemples d'Utilisation
+### Exemples
 
 ```bash
-# Lancement standard (intelligent)
-python launch.py
+# lancement standard
+uv run python launch.py --theme simplon
 
-# Rebuild complet
-python launch.py --force
+# rebuild complet
+uv run python launch.py --theme simplon --force
 
-# Mode rapide
-python launch.py --skip-download --skip-etl
+# mode rapide
+uv run python launch.py --theme simplon --skip-download --skip-etl
 
-# Diagnostic uniquement
-python launch.py --health-check-only
+# diagnostic uniquement
+uv run python launch.py --health-check-only
 
-# Port personnalisé
-python launch.py --port 8888
+# sans splash (mode CLI)
+uv run python launch.py --no-splash
 
-# Mode silencieux
-python launch.py --quiet
-
-# Mode verbeux
-python launch.py --verbose
+# avec verification + tests
+uv run python launch.py --verify-csv --run-tests
 ```
 
-## Makefile Targets
+## Cibles Makefile
 
 ```bash
-make launch         # Lancement standard
-make launch-force   # Rebuild complet
-make launch-quick   # Mode rapide (skip si possible)
-make health         # Diagnostic uniquement
+make launch
+make launch-force
+make launch-quick
+make launch-with-tests
+make launch-with-all-tests
+make launch-with-verify
+make health
 ```
 
-## Variables d'Environnement
+## Variables d'environnement
 
-### `.env` (requis)
+Variables utiles:
 
 ```bash
-KAGGLE_USERNAME=your_username
-KAGGLE_KEY=your_api_key
+DASHBOARD_PORT=8080
+DASHBOARD_SHOW_BROWSER=1
+KAGGLE_USERNAME=...
+KAGGLE_KEY=...
 ```
 
-### `.env` (optionnel)
+Notes:
+
+- `DASHBOARD_SHOW_BROWSER` est `false` par defaut dans `src/dashboard/main.py`.
+- `--port` force le port au moment du lancement.
+- en mode splash, le launcher demarre toujours le splash sur `8079`.
+
+## Verification rapide de la doc
+
+Commandes utilisees pour valider cette documentation:
 
 ```bash
-DASHBOARD_PORT=8080              # Port du dashboard
-DASHBOARD_SHOW_BROWSER=1         # Auto-open navigateur
+make help
+uv run python launch.py --help
 ```
 
-## Gestion d'Erreurs
+## Points d'attention
 
-### Erreurs Catchées
-
-- `ConfigurationError` : Problème .env ou credentials
-- `HealthCheckError` : Échec diagnostic
-- `DownloadError` : Échec téléchargement Kaggle
-- `LauncherError` : Erreur générale orchestration
-- `KeyboardInterrupt` : Interruption utilisateur
-
-### Stratégie
-
-1. Chaque phase utilise un context manager avec try/except
-2. Les erreurs sont contextualisées avec le nom de la phase
-3. L'UI affiche les erreurs en rouge avec le symbole ✗
-4. Le launcher s'arrête à la première erreur critique
-
-## Tests Manuels
-
-### Fresh Install
-
-```bash
-rm -rf .env data/
-python launch.py
-# → Doit créer .env interactivement, télécharger CSV, run ETL, launch
-```
-
-### Force Rebuild
-
-```bash
-python launch.py --force
-# → Doit re-télécharger et rebuild même si déjà fait
-```
-
-### Skip Intelligent
-
-```bash
-# Avec DB et CSV existants
-python launch.py
-# → Doit skip download et ETL
-```
-
-### Health Check
-
-```bash
-python launch.py --health-check-only
-# → Doit afficher rapport complet sans lancer
-```
-
-### Interruption
-
-```bash
-python launch.py
-# Ctrl+C pendant ETL
-# → Doit afficher "Launcher interrupted by user" et s'arrêter proprement
-```
-
-## Améliorations Futures
-
-### Court Terme
-
-- [ ] Progress bar avec `tqdm` pour téléchargement CSV
-- [ ] Progress bar pour phases ETL longues
-- [ ] Couleurs dans les logs ETL (INFO=blanc, WARNING=jaune, ERROR=rouge)
-
-### Moyen Terme
-
-- [ ] Mode `--watch` : relancer ETL automatiquement si CSV changent
-- [ ] Mode `--daemon` : dashboard en arrière-plan
-- [ ] Tests unitaires pour chaque module launcher
-- [ ] CI/CD avec validation launcher
-
-### Long Terme
-
-- [ ] Support multi-environnements (.env.dev, .env.prod)
-- [ ] Plugins pour sources de données alternatives
-- [ ] Web UI pour configuration (alternative au CLI)
-- [ ] Télémétrie et métriques de performance
-
-## Statistiques
-
-- **Lignes de code** : ~989 lignes
-- **Modules** : 8 fichiers Python
-- **Dépendances ajoutées** : 1 (colorama)
-- **Phases** : 6 phases orchestrées
-- **Options CLI** : 8 options
-
-## Avantages
-
-✅ **Zéro modification** du code ETL et dashboard existant
-✅ **UX exceptionnelle** avec animation Matrix engageante
-✅ **Skip intelligent** basé sur l'état (timestamps, existence)
-✅ **Aucune nouvelle dépendance majeure** (colorama seulement)
-✅ **Modulaire et testable** (chaque composant isolé)
-✅ **Cross-platform** (Python pur, colorama pour les couleurs)
-✅ **Robuste** avec gestion d'erreurs complète
-✅ **Extensible** pour futures fonctionnalités
+- `healthcheck.py` verifie la presence de: `pandas`, `sqlalchemy`, `nicegui`, `click`, `colorama`, `dotenv`, `kaggle`.
+- pour un lancement fluide, installer les extras dashboard/dev selon besoin (`uv sync --all-extras` recommande pour le mode launcher complet).

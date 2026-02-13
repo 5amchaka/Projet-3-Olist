@@ -36,7 +36,6 @@ class HealthChecker:
             "sqlalchemy",
             "nicegui",
             "click",
-            "tqdm",
             "colorama",
         ]
 

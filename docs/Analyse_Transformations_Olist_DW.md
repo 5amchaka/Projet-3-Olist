@@ -300,28 +300,33 @@ Les ecarts correspondent exactement aux 775 commandes sans articles. Ce n'est pa
 
 ### Contexte
 
-Dans le Data Warehouse, chaque commande possede deux montants : un montant **facture** (`SUM(price) + SUM(freight_value)` dans fact_orders) et un montant **paye** (`order_payment_total`, provenant de `SUM(payment_value)` agrege depuis le CSV brut). En theorie, ces deux montants devraient etre identiques. L'investigation revele 387 commandes (0.39%) presentant un ecart superieur a 0.01 R$.
+Dans le Data Warehouse, chaque commande possede deux montants :
+
+- montant **facture** : `SUM(price) + SUM(freight_value)` (par `order_id`)
+- montant **paye** : `order_payment_total` (agregation de `payment_value`)
+
+En theorie, ces montants devraient etre identiques. Les chiffres ci-dessous ont ete reverifies via `scripts/verify_hardcoded_values.py` (lecture seule de `olist_dw.db`).
 
 ### Statistiques globales
 
 | Indicateur | Valeur |
 |---|---|
-| Commandes avec ecart | 387 / 98 666 (0.39%) |
-| Delta moyen | +7.42 R$ |
+| Commandes avec ecart | 303 / 98 665 (0.31%) |
+| Delta moyen | +9.48 R$ |
 | Delta min | -51.62 R$ |
 | Delta max | +182.81 R$ |
-| Somme nette des ecarts | +2 870.82 R$ |
-| Commandes surpayees | 294 (somme : +3 070.44 R$) |
-| Commandes sous-payees | 93 (somme : -199.62 R$) |
+| Somme nette des ecarts | +2 871.06 R$ |
+| Commandes surpayees | 264 (somme : +3 070.14 R$) |
+| Commandes sous-payees | 39 (somme : -199.08 R$) |
 
 ### Repartition par type de paiement
 
 | Type paiement | Commandes | Avec ecart | % ecart | Delta moyen |
 |---|---|---|---|---|
-| **credit_card** | 75 623 | 349 | 0.46% | +8.37 R$ |
-| **boleto** | 19 614 | 26 | 0.13% | ~0.00 R$ |
-| **debit_card** | 1 520 | 10 | 0.66% | -5.20 R$ |
-| **voucher** | 1 908 | 2 | 0.10% | -0.01 R$ |
+| **credit_card** | 75 623 | 282 | 0.37% | +10.37 R$ |
+| **boleto** | 19 614 | 14 | 0.07% | +0.00 R$ |
+| **debit_card** | 1 520 | 7 | 0.46% | -7.42 R$ |
+| **voucher** | 1 908 | 0 | 0.00% | N/A |
 
 ### Distribution des ecarts par tranche
 
@@ -329,95 +334,31 @@ Dans le Data Warehouse, chaque commande possede deux montants : un montant **fac
 |---|---|
 | < -10 | 7 |
 | -10 a -1 | 10 |
-| -1 a -0.01 | 76 |
-| **exact (+-0.01)** | **98 278** |
-| 0.01 a 1 | 62 |
+| -1 a -0.01 | 22 |
+| **exact (+-0.01)** | **98 362** |
+| 0.01 a 1 | 32 |
 | 1 a 10 | 141 |
 | 10 a 50 | 84 |
-| > 50 | 8 |
+| > 50 | 7 |
 
-### Causes identifiees
+### Lecture metier
 
-**1. Interets de financement (juros) — 264 commandes (68% des ecarts)**
-
-Au Bresil, les paiements par carte de credit en plusieurs fois (*parcelamento*) incluent des interets dans `payment_value`. Le champ `payment_installments` du CSV brut (non charge dans le DW) confirme cette hypothese : les commandes avec ecart ont en moyenne 5.24 parcelas contre 2.85 pour celles sans ecart. Les 264 commandes credit_card surpayees avec plus d'une parcela representent a elles seules +3 063.84 R$ d'ecart, soit l'essentiel de l'impact net.
-
-**2. Arrondis boleto — 26 commandes**
-
-Ecarts negligeables (±0.04 R$ maximum), lies aux arrondis de centimes lors de la generation du boleto bancaire. Somme nette : +0.08 R$.
-
-**3. Sous-paiements debit_card — 9 commandes**
-
-Le client paye MOINS que le facture (-1.60 a -16.50 R$). Toutes ces commandes sont en statut "delivered" avec 1 a 2 articles, ce qui elimine l'hypothese d'annulation partielle. Cause probable : cashback ou remise appliquee par le processeur de paiement.
-
-**4. Paiements mixtes — 4 commandes**
-
-L'ETL agrege `SUM(payment_value)` tous types confondus et ne garde que le `payment_type` dominant. Quand une commande combine voucher + carte, le delta peut provenir de l'interaction entre la remise voucher et les interets carte.
-
-### Synthese des causes
-
-| Cause | Nb commandes | Delta moyen | Impact total |
-|---|---|---|---|
-| **Interets financement (juros)** | 264 | +11.61 R$ | +3 063.84 R$ |
-| Sous-paye autre | 74 | -1.99 R$ | -147.47 R$ |
-| Arrondi boleto | 26 | ~0 R$ | +0.08 R$ |
-| Sous-paye debit (cashback?) | 9 | -5.77 R$ | -51.97 R$ |
-| Surpaye 1x (cause inconnue) | 9 | +0.25 R$ | +2.24 R$ |
-| Paiement mixte | 4 | +1.02 R$ | +4.09 R$ |
-| Autre | 1 | +0.01 R$ | +0.01 R$ |
-| **TOTAL** | **387** | **+7.42 R$** | **+2 870.82 R$** |
+- les ecarts restent marginaux (0.31% des commandes avec paiement)
+- 93% des ecarts concernent `credit_card` (282 / 303)
+- la quasi-totalite de la valeur nette provient des commandes `credit_card` surpayees
 
 ---
 
 ## 8. Taux d'interet implicite du parcelamento
 
-L'axe le plus riche revele par l'analyse des ecarts concerne les interets de financement. En croisant les donnees du CSV brut (`payment_installments`) avec les montants factures du DW, on peut calculer le taux d'interet implicite applique aux paiements en plusieurs fois.
+L'hypothese "interets de financement" reste la plus probable pour une partie des ecarts en carte de credit.
 
-### Methodologie
+Verification CSV (script `scripts/verify_csv_analysis.sh`) :
 
-Pour chaque commande surpayee par credit_card avec plus d'une parcela :
+- installments moyens pour les commandes **avec ecart** : `5.86`
+- installments moyens pour les commandes **sans ecart** : `2.92`
 
-- **Taux total** = `(paye - facture) / facture`
-- **Taux mensuel compose** = `(paye / facture)^(1/n) - 1` ou `n` = nombre de parcelas
-- **Taux annuel equivalent** = `(1 + taux_mensuel)^12 - 1`
-
-### Resultats par nombre de parcelas
-
-| Parcelas | Nb commandes | Delta moyen (R$) | Taux total moyen | Taux median |
-|---|---|---|---|---|
-| 2 | 16 | +0.87 | 2.58% | 3.45% |
-| 3 | 39 | +2.75 | 5.79% | 4.62% |
-| 4 | 39 | +3.53 | 6.99% | 5.79% |
-| 5 | 29 | +6.76 | 9.56% | 6.99% |
-| 6 | 32 | +8.86 | 8.89% | 8.17% |
-| 7 | 18 | +10.05 | 12.11% | 13.03% |
-| 8 | 18 | +13.35 | 11.60% | 11.81% |
-| 10 | 42 | +25.07 | 11.29% | 13.02% |
-| 12 | 14 | +24.83 | 15.50% | 15.50% |
-| 20-24 | 3 | +78.20 | 26.04% | 25.21% |
-
-La tendance est claire : le taux d'interet total augmente avec le nombre de parcelas, de ~3% pour 2 parcelas a ~25% pour 20+ parcelas.
-
-### Taux mensuel implicite
-
-| Parcelas | Taux mensuel moyen | Taux mensuel median |
-|---|---|---|
-| 2 | 1.277% | 1.709% |
-| 3 | 1.876% | 1.518% |
-| 4 | 1.687% | 1.418% |
-| 5 | 1.837% | 1.360% |
-| 6 | 1.419% | 1.318% |
-| 8 | 1.357% | 1.404% |
-| 10 | 1.058% | 1.232% |
-| 12 | 1.208% | 1.208% |
-
-**Taux mensuel median global : 1.361%, soit un taux annuel compose equivalent de 17.6%.**
-
-A titre de comparaison, le taux SELIC (taux directeur bresilien) oscillait entre 6.5% et 14.25% sur la periode 2017-2018. Le taux implicite de 17.6% est coherent avec les pratiques du marche bresilien du credit a la consommation, ou les taux de parcelamento sont generalement superieurs au taux directeur.
-
-### Interpretation et limites
-
-L'analyse ne porte que sur les 264 commandes ou l'ecart est mesurable (surpaye > 0.01 R$). En realite, une large partie des paiements en plusieurs fois au Bresil sont "sem juros" (sans interets) — les interets sont absorbes par le vendeur ou la plateforme. Cela explique pourquoi seules 2% des commandes multi-parcelas presentent un ecart visible : les 98% restantes beneficient probablement du parcelamento sans interets, une pratique commerciale tres courante au Bresil.
+Ce signal est coherent avec un effet de `parcelamento` (paiement en plusieurs fois), mais `payment_installments` n'etant pas charge dans `fact_orders`, l'attribution causale fine reste hors DW natif.
 
 ### Recommandation pour le DW
 
@@ -443,7 +384,7 @@ LIMIT 20;
 
 Le Data Warehouse inclut 3 vues precalculees qui facilitent les analyses recurrentes.
 
-### 7.1 v_monthly_sales
+### 9.1 v_monthly_sales
 
 Agregation mensuelle du chiffre d'affaires pour les commandes livrees.
 
@@ -464,7 +405,7 @@ GROUP BY d.year, d.month;
 
 **Usage :** suivi du CA mensuel, nombre de commandes et panier moyen.
 
-### 7.2 v_customer_cohorts
+### 9.2 v_customer_cohorts
 
 Analyse de cohorte par client unique : identifie le premier mois d'achat, le nombre total de commandes et le montant total depense.
 
@@ -486,7 +427,7 @@ GROUP BY c.customer_unique_id;
 
 **Usage :** analyse de retention, valeur vie client (LTV), segmentation.
 
-### 7.3 v_orders_enriched
+### 9.3 v_orders_enriched
 
 Vue denormalisee joignant fact_orders avec toutes les dimensions, fournissant directement les libelles sans jointures manuelles.
 
@@ -521,4 +462,4 @@ Le processus de transformation des 9 fichiers CSV Olist vers le Data Warehouse e
 
 Les anomalies identifiees (278 geo_key NULL, 0.1% d'ecart sur les reviews, precision geographique limitee a ~2 km) sont mineures et ne compromettent pas la fiabilite globale du Data Warehouse.
 
-L'analyse approfondie des ecarts de paiement (section 7-8) revele un phenomene metier important : 264 commandes presentent des interets de financement (*juros*) lies au parcelamento bresilien, avec un taux mensuel median implicite de 1.36% (17.6% annuel). Ce constat ouvre des pistes d'enrichissement du DW, notamment l'ajout de `payment_installments` pour segmenter les comportements de financement.
+L'analyse des ecarts de paiement (sections 7-8) montre un phenomene cible mais mesurable : 303 commandes presentent un ecart > 0.01 R$ (0.31%), concentre a 93% sur `credit_card`. Le signal sur les installments (5.86 vs 2.92) suggere un effet de financement `parcelamento`, et justifie l'ajout de `payment_installments` dans le DW pour une analyse causale plus fine.
